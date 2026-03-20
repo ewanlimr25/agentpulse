@@ -1,0 +1,70 @@
+# AgentPulse Collector Configuration
+#
+# Accepts OTLP spans from agent frameworks, enriches them with agent semantic
+# fields, then fans out to ClickHouse (traces) and Postgres (topology).
+#
+# Override values with environment variables using the syntax:
+#   AGENTPULSE_<SECTION>_<KEY> (handled by the OTel Collector config provider)
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"   # gRPC — primary for SDKs
+      http:
+        endpoint: "0.0.0.0:4318"   # HTTP/protobuf — for browser/HTTP clients
+
+processors:
+  # 1. Batch spans before processing (reduces DB round-trips)
+  batch:
+    send_batch_size: 512
+    timeout: 2s
+
+  # 2. Classify spans and compute cost
+  agentsemanticproc:
+    attributes_config: /etc/agentpulse/agent_attributes.yaml
+    pricing_config: /etc/agentpulse/model_pricing.yaml
+
+exporters:
+  # Spans → ClickHouse (structured query + metrics)
+  clickhouseexporter:
+    endpoint: "${env:CLICKHOUSE_ENDPOINT:-clickhouse://agentpulse:agentpulse@clickhouse:9000/agentpulse}"
+    database: "${env:CLICKHOUSE_DATABASE:-agentpulse}"
+    table: "spans"
+    batch_size: 1000
+    flush_interval: 5s
+    max_retries: 3
+
+  # Spans → Postgres (agent topology graph)
+  topologyexporter:
+    postgres_dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
+
+  # Debug exporter — remove in production
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch, agentsemanticproc]
+      exporters:  [clickhouseexporter, topologyexporter]
+
+    # Separate debug pipeline — disable by removing this block in production
+    traces/debug:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [debug]
+
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: basic
+      address: "0.0.0.0:8888"

@@ -14,7 +14,10 @@ func main() {
 		Version:     "0.1.0",
 	}
 
-	cmd := otelcol.NewCommand(otelcol.CollectorSettings{BuildInfo: info})
+	cmd := otelcol.NewCommand(otelcol.CollectorSettings{
+		BuildInfo: info,
+		Factories: components,
+	})
 	if err := cmd.Execute(); err != nil {
 		log.Fatal(err)
 	}

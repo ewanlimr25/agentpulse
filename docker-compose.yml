@@ -56,6 +56,30 @@ services:
       timeout: 5s
       retries: 10
 
+  collector:
+    build:
+      context: ./collector
+      dockerfile: Dockerfile
+    container_name: agentpulse-collector
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "13133:13133" # Health check
+      - "8888:8888"   # Collector metrics
+    environment:
+      CLICKHOUSE_ENDPOINT: "clickhouse://agentpulse:agentpulse@clickhouse:9000/agentpulse"
+      CLICKHOUSE_DATABASE: "agentpulse"
+      POSTGRES_DSN: "postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable"
+    volumes:
+      - ./config/agent_attributes.yaml:/etc/agentpulse/agent_attributes.yaml:ro
+      - ./config/model_pricing.yaml:/etc/agentpulse/model_pricing.yaml:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    profiles: ["full"] # Only start with: docker compose --profile full up
+
   minio-init:
     image: minio/mc:latest
     container_name: agentpulse-minio-init
