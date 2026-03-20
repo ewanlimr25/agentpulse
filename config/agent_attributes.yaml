@@ -1,0 +1,95 @@
+# Agent Attribute Registry
+#
+# Maps OTel span attribute names to AgentPulse internal semantic fields.
+# Update this file when the OTel GenAI SIG renames or adds attributes —
+# no code changes required.
+#
+# Priority: attributes are checked in order; first match wins.
+
+# ── Span kind classification ──────────────────────────────────────────────────
+#
+# Determines the agent_span_kind field stored in ClickHouse.
+# Values: llm.call | tool.call | agent.handoff | memory.read | memory.write | unknown
+
+span_kind_detection:
+  # OTel GenAI SIG: gen_ai.operation.name is the current convention
+  - attribute: "gen_ai.operation.name"
+    value_map:
+      "chat": "llm.call"
+      "completion": "llm.call"
+      "embeddings": "llm.call"
+      "tool_call": "tool.call"
+      "execute_tool": "tool.call"
+      "handoff": "agent.handoff"
+      "transfer": "agent.handoff"
+      "memory_read": "memory.read"
+      "memory_write": "memory.write"
+
+  # AgentPulse explicit override — set this in your spans for unambiguous classification
+  - attribute: "agentpulse.span_kind"
+    passthrough: true
+
+  # Span name prefix heuristics (fallback)
+  - attribute: "_span_name"
+    prefix_map:
+      "llm.": "llm.call"
+      "tool.": "tool.call"
+      "agent.handoff": "agent.handoff"
+      "memory.read": "memory.read"
+      "memory.write": "memory.write"
+
+# ── Field extraction ──────────────────────────────────────────────────────────
+#
+# Maps internal field names to ordered lists of OTel attributes to check.
+# First non-empty attribute value is used.
+
+field_extraction:
+  agent_name:
+    - "agentpulse.agent.name"       # AgentPulse explicit
+    - "gen_ai.agent.name"           # Anticipated future SIG attribute
+    - "agent.name"                  # Common informal convention
+    - "service.name"                # Fallback: use service name
+
+  model_id:
+    - "gen_ai.request.model"        # Current SIG convention
+    - "gen_ai.model.id"             # Possible future SIG rename
+    - "llm.model_name"              # Older LangChain convention
+    - "model"                       # Minimal fallback
+
+  input_tokens:
+    - "gen_ai.usage.input_tokens"   # Current SIG convention
+    - "gen_ai.usage.prompt_tokens"  # Older OpenAI convention
+    - "llm.usage.prompt_tokens"
+
+  output_tokens:
+    - "gen_ai.usage.output_tokens"  # Current SIG convention
+    - "gen_ai.usage.completion_tokens"
+    - "llm.usage.completion_tokens"
+
+  tool_name:
+    - "agentpulse.tool.name"
+    - "tool.name"
+    - "gen_ai.tool.name"
+
+  handoff_target:
+    - "agentpulse.handoff.target_agent"
+    - "agent.handoff.target"
+    - "gen_ai.agent.handoff.target"
+
+  memory_key:
+    - "agentpulse.memory.key"
+    - "memory.key"
+
+  run_id:
+    - "agentpulse.run_id"
+    - "run.id"
+    - "trace.run_id"
+
+# ── Cost computation ──────────────────────────────────────────────────────────
+#
+# How to compute cost when not provided explicitly.
+# Loaded from model_pricing.yaml; this section controls the extraction logic.
+
+cost:
+  explicit_attribute: "agentpulse.cost_usd"   # Use this if present, skip computation
+  pricing_config: "config/model_pricing.yaml"

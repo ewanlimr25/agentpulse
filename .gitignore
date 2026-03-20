@@ -1,0 +1,29 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Go build artifacts
+collector/collector
+backend/backend
+
+# Go workspace sum (regenerated)
+go.work.sum
+
+# Node
+web/node_modules/
+web/.next/
+web/out/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
