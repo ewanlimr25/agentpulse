@@ -11,6 +11,7 @@ import (
 	"github.com/agentpulse/agentpulse/collector/exporter/clickhouseexporter"
 	"github.com/agentpulse/agentpulse/collector/exporter/topologyexporter"
 	"github.com/agentpulse/agentpulse/collector/processor/agentsemanticproc"
+	"github.com/agentpulse/agentpulse/collector/processor/budgetenforceproc"
 )
 
 // components returns the full set of factories for the AgentPulse collector.
@@ -36,8 +37,9 @@ func components() (otelcol.Factories, error) {
 
 	// Processors
 	factories.Processors, err = otelcol.MakeFactoryMap(
-		agentsemanticproc.NewFactory(), // agent span classification + cost
-		batchprocessor.NewFactory(),    // standard batching
+		agentsemanticproc.NewFactory(),  // agent span classification + cost
+		budgetenforceproc.NewFactory(),  // budget enforcement + alerting
+		batchprocessor.NewFactory(),     // standard batching
 	)
 	if err != nil {
 		return otelcol.Factories{}, err

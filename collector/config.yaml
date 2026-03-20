@@ -29,6 +29,12 @@ processors:
     attributes_config: /etc/agentpulse/agent_attributes.yaml
     pricing_config: /etc/agentpulse/model_pricing.yaml
 
+  # 3. Enforce budget rules and fire alerts
+  budgetenforceproc:
+    postgres_dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
+    rule_refresh_interval: 30s
+    webhook_timeout: 5s
+
 exporters:
   # Spans → ClickHouse (structured query + metrics)
   clickhouseexporter:
@@ -53,7 +59,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [batch, agentsemanticproc]
+      processors: [batch, agentsemanticproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
 
     # Separate debug pipeline — disable by removing this block in production

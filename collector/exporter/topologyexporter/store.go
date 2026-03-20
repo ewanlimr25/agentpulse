@@ -51,7 +51,7 @@ func (s *postgresStore) UpsertNodes(ctx context.Context, projectID string, nodes
 			(project_id, run_id, trace_id, span_id, node_type, node_name, status,
 			 start_time, end_time, cost_usd, token_count, metadata)
 		SELECT
-			$1::uuid, v.run_id, ''::text, v.span_id, v.node_type, v.node_name, v.status,
+			$1, v.run_id, ''::text, v.span_id, v.node_type, v.node_name, v.status,
 			v.start_time, v.end_time, v.cost_usd, v.token_count, v.metadata::jsonb
 		FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
 		            $7::timestamptz[], $8::timestamptz[], $9::float8[], $10::int4[], $11::text[])
@@ -110,7 +110,7 @@ func (s *postgresStore) UpsertEdges(ctx context.Context, projectID string, edges
 		batch.Queue(`
 			INSERT INTO topology_edges
 				(project_id, run_id, source_node_id, target_node_id, edge_type)
-			VALUES ($1::uuid, $2, $3::uuid, $4::uuid, $5)
+			VALUES ($1, $2, $3::uuid, $4::uuid, $5)
 			ON CONFLICT (project_id, run_id, source_node_id, target_node_id, edge_type)
 			DO NOTHING`,
 			projectID, e.RunID, srcID, dstID, e.EdgeType,

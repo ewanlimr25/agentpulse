@@ -1,0 +1,29 @@
+package domain
+
+import "time"
+
+// Run represents a single agent execution run with aggregated metrics.
+// It is derived from spans stored in ClickHouse via a materialized view.
+type Run struct {
+	RunID     string
+	ProjectID string
+	TraceID   string
+
+	StartTime time.Time
+	EndTime   time.Time
+	DurationMS float64
+
+	SpanCount    uint64
+	LLMCallCount uint64
+	ToolCallCount uint64
+
+	TotalInputTokens  uint64
+	TotalOutputTokens uint64
+	TotalTokens       uint64
+	TotalCostUSD      float64
+
+	// ErrorCount is the number of spans with status ERROR.
+	ErrorCount uint64
+	// Status is "error" if any span errored, otherwise "ok".
+	Status string
+}

@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE TABLE IF NOT EXISTS topology_nodes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id      TEXT NOT NULL,   -- plain string from span attributes; no FK so collector can write freely
     run_id          TEXT NOT NULL,
     trace_id        TEXT NOT NULL,
     span_id         TEXT NOT NULL,
@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_topology_nodes_project_run ON topology_nodes (pro
 
 CREATE TABLE IF NOT EXISTS topology_edges (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id      TEXT NOT NULL,   -- plain string; matches topology_nodes.project_id
     run_id          TEXT NOT NULL,
 
     source_node_id  UUID NOT NULL REFERENCES topology_nodes(id) ON DELETE CASCADE,
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
     triggered_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     current_cost    DOUBLE PRECISION NOT NULL,
     threshold_usd   DOUBLE PRECISION NOT NULL,
-    action_taken    TEXT NOT NULL CHECK (action_taken IN ('notified', 'halted')),
+    action_taken    TEXT NOT NULL CHECK (action_taken IN ('notify', 'halt')),
 
     metadata        JSONB NOT NULL DEFAULT '{}'
 );

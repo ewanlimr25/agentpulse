@@ -9,7 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/agentpulse/agentpulse/backend/internal/alert"
+	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
+	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
+	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
 )
 
 func main() {
@@ -24,8 +28,38 @@ func main() {
 		os.Exit(1)
 	}
 
+	// ── Storage connections ────────────────────────────────────────────────
+	chConn, err := chstore.Open(cfg.ClickHouse)
+	if err != nil {
+		slog.Error("clickhouse connect", "error", err)
+		os.Exit(1)
+	}
+	defer chConn.Close()
+
+	pgPool, err := pgstore.Open(cfg.Postgres)
+	if err != nil {
+		slog.Error("postgres connect", "error", err)
+		os.Exit(1)
+	}
+	defer pgPool.Close()
+
+	// ── Stores ────────────────────────────────────────────────────────────
+	spanStore := chstore.NewSpanStore(chConn)
+	runStore := chstore.NewRunStore(chConn)
+	projectStore := pgstore.NewProjectStore(pgPool)
+	topologyStore := pgstore.NewTopologyStore(pgPool)
+	budgetStore := pgstore.NewBudgetStore(pgPool)
+
+	// ── Alert hub ─────────────────────────────────────────────────────────
+	hub := alert.NewHub()
+	go hub.Run()
+
+	// ── HTTP server ───────────────────────────────────────────────────────
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, hub)
+
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
+		Handler:      router,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,

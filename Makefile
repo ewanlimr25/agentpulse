@@ -35,6 +35,8 @@ migrate-up: ## Apply all pending migrations
 		--database agentpulse < migrations/clickhouse/001_spans.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/002_metrics_agg.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/003_run_metrics.sql
 	@echo "Migrations complete."
 
 migrate-down: ## Roll back Postgres migrations
@@ -79,7 +81,7 @@ test-web: ## Run frontend tests
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 seed: ## Generate and send synthetic trace data (requires collector running)
-	go run ./tools/tracegen/... --runs 5 --agents 3
+	go run ./tools/tracegen/... --runs 5 --scenario all
 
 # ── Combined ─────────────────────────────────────────────────────────────────
 

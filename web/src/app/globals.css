@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f1117;
+  --surface: #1a1d27;
+  --surface-2: #242736;
+  --border: #2d3148;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --accent: #6366f1;
+  --ok: #22c55e;
+  --error: #ef4444;
+  --warn: #f59e0b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--text);
+  font-family: var(--font-geist-sans), sans-serif;
+}
+
+/* React Flow overrides */
+.react-flow__background {
+  background: var(--background) !important;
+}
+.react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 2;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--accent);
+}

@@ -20,6 +20,10 @@ processors:
   agentsemanticproc:
     attributes_config: ../config/agent_attributes.yaml
     pricing_config: ../config/model_pricing.yaml
+  budgetenforceproc:
+    postgres_dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
+    rule_refresh_interval: 30s
+    webhook_timeout: 5s
 
 exporters:
   clickhouseexporter:
@@ -39,7 +43,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [batch, agentsemanticproc]
+      processors: [batch, agentsemanticproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
     traces/debug:
       receivers:  [otlp]
