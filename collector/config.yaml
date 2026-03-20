@@ -67,4 +67,3 @@ service:
       level: info
     metrics:
       level: basic
-      address: "0.0.0.0:8888"

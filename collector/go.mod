@@ -43,6 +43,10 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mostynb/go-grpc-compression v1.2.3 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.148.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/common v0.148.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/internal/healthcheck v0.148.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/status v0.148.0 // indirect
 	github.com/paulmach/orb v0.12.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.26 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -80,6 +84,9 @@ require (
 	go.opentelemetry.io/collector/config/configtelemetry v0.148.0 // indirect
 	go.opentelemetry.io/collector/config/configtls v1.54.0 // indirect
 	go.opentelemetry.io/collector/confmap v1.54.0 // indirect
+	go.opentelemetry.io/collector/confmap/provider/envprovider v1.54.0 // indirect
+	go.opentelemetry.io/collector/confmap/provider/fileprovider v1.54.0 // indirect
+	go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.54.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.148.0 // indirect
 	go.opentelemetry.io/collector/connector v0.148.0 // indirect
 	go.opentelemetry.io/collector/connector/connectortest v0.148.0 // indirect
@@ -101,6 +108,7 @@ require (
 	go.opentelemetry.io/collector/extension/extensionmiddleware v0.148.0 // indirect
 	go.opentelemetry.io/collector/extension/extensiontest v0.148.0 // indirect
 	go.opentelemetry.io/collector/extension/xextension v0.148.0 // indirect
+	go.opentelemetry.io/collector/extension/zpagesextension v0.148.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.54.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.148.0 // indirect
 	go.opentelemetry.io/collector/internal/fanoutconsumer v0.148.0 // indirect
@@ -128,6 +136,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.67.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0 // indirect
 	go.opentelemetry.io/contrib/otelconf v0.22.0 // indirect
+	go.opentelemetry.io/contrib/zpages v0.67.0 // indirect
 	go.opentelemetry.io/otel v1.42.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.18.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.18.0 // indirect

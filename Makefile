@@ -45,8 +45,8 @@ migrate-down: ## Roll back Postgres migrations
 collector-build: ## Build the OTel collector binary
 	cd collector && go build ./...
 
-collector-run: ## Run the OTel collector (requires dev-up)
-	cd collector && go run ./cmd/collector/... --config config.yaml
+collector-run: ## Run the OTel collector locally (requires dev-up)
+	cd collector && go run ./cmd/collector/... --config config.dev.yaml
 
 test-collector: ## Run collector unit tests
 	cd collector && go test ./... -race -count=1

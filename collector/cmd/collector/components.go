@@ -1,10 +1,12 @@
 package main
 
 import (
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension"
 	"go.opentelemetry.io/collector/exporter/debugexporter"
 	"go.opentelemetry.io/collector/otelcol"
 	"go.opentelemetry.io/collector/processor/batchprocessor"
 	"go.opentelemetry.io/collector/receiver/otlpreceiver"
+	"go.opentelemetry.io/collector/service/telemetry/otelconftelemetry"
 
 	"github.com/agentpulse/agentpulse/collector/exporter/clickhouseexporter"
 	"github.com/agentpulse/agentpulse/collector/exporter/topologyexporter"
@@ -15,6 +17,14 @@ import (
 func components() (otelcol.Factories, error) {
 	var factories otelcol.Factories
 	var err error
+
+	// Extensions
+	factories.Extensions, err = otelcol.MakeFactoryMap(
+		healthcheckextension.NewFactory(),
+	)
+	if err != nil {
+		return otelcol.Factories{}, err
+	}
 
 	// Receivers
 	factories.Receivers, err = otelcol.MakeFactoryMap(
@@ -42,6 +52,8 @@ func components() (otelcol.Factories, error) {
 	if err != nil {
 		return otelcol.Factories{}, err
 	}
+
+	factories.Telemetry = otelconftelemetry.NewFactory()
 
 	return factories, nil
 }

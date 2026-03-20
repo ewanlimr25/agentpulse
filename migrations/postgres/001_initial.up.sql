@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS topology_nodes (
     UNIQUE (project_id, run_id, span_id)
 );
 
-CREATE INDEX idx_topology_nodes_project_run ON topology_nodes (project_id, run_id);
+CREATE INDEX IF NOT EXISTS idx_topology_nodes_project_run ON topology_nodes (project_id, run_id);
 
 -- ── Topology: edges ───────────────────────────────────────────────────────────
 
@@ -57,9 +57,9 @@ CREATE TABLE IF NOT EXISTS topology_edges (
     UNIQUE (project_id, run_id, source_node_id, target_node_id, edge_type)
 );
 
-CREATE INDEX idx_topology_edges_project_run ON topology_edges (project_id, run_id);
-CREATE INDEX idx_topology_edges_source ON topology_edges (source_node_id);
-CREATE INDEX idx_topology_edges_target ON topology_edges (target_node_id);
+CREATE INDEX IF NOT EXISTS idx_topology_edges_project_run ON topology_edges (project_id, run_id);
+CREATE INDEX IF NOT EXISTS idx_topology_edges_source ON topology_edges (source_node_id);
+CREATE INDEX IF NOT EXISTS idx_topology_edges_target ON topology_edges (target_node_id);
 
 -- ── Budget rules ──────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS budget_rules (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_budget_rules_project ON budget_rules (project_id) WHERE enabled = true;
+CREATE INDEX IF NOT EXISTS idx_budget_rules_project ON budget_rules (project_id) WHERE enabled = true;
 
 -- ── Budget alerts ─────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS budget_alerts (
     metadata        JSONB NOT NULL DEFAULT '{}'
 );
 
-CREATE INDEX idx_budget_alerts_project ON budget_alerts (project_id, triggered_at DESC);
-CREATE INDEX idx_budget_alerts_rule ON budget_alerts (rule_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_budget_alerts_project ON budget_alerts (project_id, triggered_at DESC);
+CREATE INDEX IF NOT EXISTS idx_budget_alerts_rule ON budget_alerts (rule_id, triggered_at DESC);
 
 COMMIT;

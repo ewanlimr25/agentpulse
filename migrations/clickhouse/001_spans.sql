@@ -49,11 +49,7 @@ ORDER BY (project_id, _date, trace_id, start_time)
 TTL _date + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
--- Bloom filter index for direct run_id lookups
-ALTER TABLE spans ADD INDEX idx_run_id run_id TYPE bloom_filter GRANULARITY 1;
-
--- Bloom filter index for span kind filtering
-ALTER TABLE spans ADD INDEX idx_span_kind agent_span_kind TYPE bloom_filter GRANULARITY 1;
-
--- Bloom filter index for error filtering
-ALTER TABLE spans ADD INDEX idx_status status_code TYPE bloom_filter GRANULARITY 1;
+-- Bloom filter indexes (IF NOT EXISTS requires ClickHouse 24.1+)
+ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_run_id run_id TYPE bloom_filter GRANULARITY 1;
+ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_span_kind agent_span_kind TYPE bloom_filter GRANULARITY 1;
+ALTER TABLE spans ADD INDEX IF NOT EXISTS idx_status status_code TYPE bloom_filter GRANULARITY 1;

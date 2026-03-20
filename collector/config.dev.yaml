@@ -1,0 +1,52 @@
+# Local development config — overrides Docker hostnames with localhost.
+# Use: make collector-run  (this file is used automatically in dev mode)
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 2s
+  agentsemanticproc:
+    attributes_config: ../config/agent_attributes.yaml
+    pricing_config: ../config/model_pricing.yaml
+
+exporters:
+  clickhouseexporter:
+    endpoint: "clickhouse://agentpulse:agentpulse@localhost:9000/agentpulse"
+    database: "agentpulse"
+    table: "spans"
+    batch_size: 1000
+    flush_interval: 5s
+    max_retries: 3
+  topologyexporter:
+    postgres_dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch, agentsemanticproc]
+      exporters:  [clickhouseexporter, topologyexporter]
+    traces/debug:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [debug]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: basic
