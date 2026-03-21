@@ -63,7 +63,7 @@ backend-build: ## Build the backend API binary
 	cd backend && go build ./...
 
 backend-run: ## Run the backend API (requires dev-up + migrate-up)
-	cd backend && go run ./cmd/server/...
+	@set -o allexport; [ -f .env ] && . ./.env || true; set +o allexport; cd backend && go run ./cmd/server/...
 
 test-backend: ## Run backend unit + integration tests
 	cd backend && go test ./... -race -count=1
@@ -99,6 +99,15 @@ db-reset: ## Truncate all app data (keeps schema; safe to re-seed)
 
 seed: db-reset ## Create demo projects via API and seed with realistic multi-agent runs
 	go run ./tools/tracegen/... --demo
+	@echo "Waiting for spans to land in ClickHouse..."
+	@sleep 5
+	$(MAKE) seed-evals
+
+seed-evals: ## Insert mock eval scores for all seeded llm.call spans (no API key needed)
+	@echo "Inserting mock eval scores..."
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < scripts/seed-evals.sql
+	@echo "Mock evals inserted."
 
 # ── Combined ─────────────────────────────────────────────────────────────────
 
