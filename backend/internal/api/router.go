@@ -51,6 +51,9 @@ func NewRouter(
 				r.Get("/", runHandler.List)
 			})
 
+			// Eval summary nested under project
+			r.Get("/{projectID}/evals/summary", evalHandler.SummaryByProject)
+
 			// Budget nested under project
 			r.Route("/{projectID}/budget", func(r chi.Router) {
 				budgetHandler.Routes(r)

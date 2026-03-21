@@ -150,6 +150,12 @@ export interface SpanEval {
   CreatedAt: string;
 }
 
+export interface RunEvalSummary {
+  RunID: string;
+  AvgScore: number;   // 0.0 – 1.0
+  SpanCount: number;
+}
+
 // WsAlertEvent is the real-time alert pushed over WebSocket by the backend hub.
 // Field names match the Go alert.Event JSON serialisation (snake_case).
 export interface WsAlertEvent {

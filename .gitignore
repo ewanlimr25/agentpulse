@@ -27,3 +27,6 @@ web/out/
 .idea/
 .vscode/
 *.swp
+sdk/python/src/agentpulse/__pycache__/
+sdk/python/tests/__pycache__/
+sdk/python/.coverage

@@ -27,3 +27,15 @@ func (h *EvalHandler) ListByRun(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.JSON(w, http.StatusOK, evals)
 }
+
+// SummaryByProject returns avg quality score per run for a project.
+// Route: GET /api/v1/projects/{projectID}/evals/summary
+func (h *EvalHandler) SummaryByProject(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	summaries, err := h.evals.SummaryByProject(r.Context(), projectID)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to get eval summary")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, summaries)
+}

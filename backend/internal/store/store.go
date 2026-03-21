@@ -54,6 +54,8 @@ type EvalStore interface {
 	Insert(ctx context.Context, e *domain.SpanEval) error
 	// ListByRun returns all evals for all spans in a run.
 	ListByRun(ctx context.Context, runID string) ([]*domain.SpanEval, error)
+	// SummaryByProject returns avg score per run for a project.
+	SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error)
 }
 
 // EvalJobStore manages the async eval work queue in Postgres.

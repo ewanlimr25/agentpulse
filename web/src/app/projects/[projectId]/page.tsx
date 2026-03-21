@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InfiniteData } from "@tanstack/react-query";
 import Link from "next/link";
-import { projectsApi } from "@/lib/api";
+import { projectsApi, evalsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { MetricCard } from "@/components/ui/MetricCard";
 import type { Run, RunsListResponse } from "@/lib/types";
@@ -48,6 +48,11 @@ export default function ProjectPage({
     queryFn: () => projectsApi.get(projectId),
   });
 
+  const { data: evalSummaries } = useQuery({
+    queryKey: ["evalSummaries", projectId],
+    queryFn: () => evalsApi.summaryByProject(projectId),
+  });
+
   // Reads from the same cache key that RunList populates via useInfiniteQuery
   const runs = useAllFetchedRuns(projectId);
 
@@ -87,7 +92,7 @@ export default function ProjectPage({
         {activeTab === "overview" && (
           <>
             <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
-            <RunCharts runs={runs} />
+            <RunCharts runs={runs} evalSummaries={evalSummaries} />
 
             <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
             <RunList projectId={projectId} />

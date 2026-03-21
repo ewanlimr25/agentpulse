@@ -15,6 +15,13 @@ type SpanEval struct {
 	CreatedAt   time.Time
 }
 
+// RunEvalSummary aggregates quality scores across all spans in a run.
+type RunEvalSummary struct {
+	RunID      string
+	AvgScore   float32
+	SpanCount  int
+}
+
 // EvalJob is a pending unit of work in the eval queue.
 type EvalJob struct {
 	ID        string

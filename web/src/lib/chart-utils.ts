@@ -1,4 +1,4 @@
-import type { Run } from "@/lib/types";
+import type { Run, RunEvalSummary } from "@/lib/types";
 
 export interface CostPoint {
   label: string;
@@ -87,4 +87,26 @@ export function toTokenSeries(runs: Run[]): TokenPoint[] {
     output: run.TotalOutputTokens,
     runId: run.RunID,
   }));
+}
+
+export interface QualityPoint {
+  label: string;
+  score: number;
+  runId: string;
+}
+
+/**
+ * Join sorted runs with their eval summaries to produce quality chart data.
+ * Runs without an eval score are omitted.
+ */
+export function toQualitySeries(runs: Run[], summaries: RunEvalSummary[]): QualityPoint[] {
+  const scoreByRunId = new Map(summaries.map((s) => [s.RunID, s.AvgScore]));
+  const points: QualityPoint[] = [];
+  for (const run of runs) {
+    const score = scoreByRunId.get(run.RunID);
+    if (score !== undefined) {
+      points.push({ label: formatLabel(run.StartTime), score, runId: run.RunID });
+    }
+  }
+  return points;
 }

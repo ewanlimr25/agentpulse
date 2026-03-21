@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentpulse"
+version = "0.1.0"
+description = "Thin OTel wrapper for instrumenting AI agents with AgentPulse"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+keywords = ["opentelemetry", "observability", "ai-agents", "llm", "tracing"]
+dependencies = [
+    "opentelemetry-api>=1.25.0",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.25.0",
+]
+
+[project.optional-dependencies]
+http = [
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+]
+langchain = [
+    "langchain-core>=0.2",
+]
+openai = [
+    "openai>=1.30",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "pytest-asyncio>=0.23",
+    "mypy>=1.10",
+    "ruff>=0.4",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentpulse"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=agentpulse --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+omit = [
+    "*/integrations/langchain.py",
+    "*/integrations/openai_agents.py",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
