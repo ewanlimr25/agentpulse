@@ -49,6 +49,11 @@ export const budgetApi = {
       method: "POST",
       body: JSON.stringify(rule),
     }),
+  updateRule: (projectId: string, ruleId: string, data: { Enabled?: boolean; Name?: string; ThresholdUSD?: number; Action?: string }) =>
+    apiFetch<BudgetRule>(`/api/v1/projects/${projectId}/budget/rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   deleteRule: (projectId: string, ruleId: string) =>
     apiFetch<{ deleted: string }>(
       `/api/v1/projects/${projectId}/budget/rules/${ruleId}`,

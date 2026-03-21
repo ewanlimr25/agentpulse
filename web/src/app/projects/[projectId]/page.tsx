@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi, projectsApi } from "@/lib/api";
@@ -9,6 +9,8 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import type { Run } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
+import { TabBar } from "@/components/ui/TabBar";
+import { BudgetSection } from "@/components/budget/BudgetSection";
 
 function formatDuration(ms: number) {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -49,6 +51,7 @@ export default function ProjectPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = use(params);
+  const [activeTab, setActiveTab] = useState<"overview" | "budget">("overview");
 
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
@@ -90,26 +93,38 @@ export default function ProjectPage({
           <MetricCard label="Error Rate" value={`${errorRate}%`} />
         </div>
 
-        <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
-        <RunCharts runs={runs} />
+        <TabBar
+          tabs={[{ key: "overview", label: "Overview" }, { key: "budget", label: "Budget" }]}
+          activeTab={activeTab}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget")}
+        />
 
-        <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
+        {activeTab === "overview" && (
+          <>
+            <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
+            <RunCharts runs={runs} />
 
-        {isLoading && <div className="text-[var(--text-muted)]">Loading runs...</div>}
-        {error && (
-          <div className="text-red-400">Failed to load runs: {(error as Error).message}</div>
+            <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
+
+            {isLoading && <div className="text-[var(--text-muted)]">Loading runs...</div>}
+            {error && (
+              <div className="text-red-400">Failed to load runs: {(error as Error).message}</div>
+            )}
+
+            <div className="flex flex-col gap-3">
+              {runs.map((r) => (
+                <RunRow key={r.RunID} run={r} projectId={projectId} />
+              ))}
+              {!isLoading && runs.length === 0 && (
+                <div className="text-[var(--text-muted)] border border-[var(--border)] rounded-xl px-6 py-10 text-center">
+                  No runs yet. Send traces with <code className="text-indigo-400">make seed</code>.
+                </div>
+              )}
+            </div>
+          </>
         )}
 
-        <div className="flex flex-col gap-3">
-          {runs.map((r) => (
-            <RunRow key={r.RunID} run={r} projectId={projectId} />
-          ))}
-          {!isLoading && runs.length === 0 && (
-            <div className="text-[var(--text-muted)] border border-[var(--border)] rounded-xl px-6 py-10 text-center">
-              No runs yet. Send traces with <code className="text-indigo-400">make seed</code>.
-            </div>
-          )}
-        </div>
+        {activeTab === "budget" && <BudgetSection projectId={projectId} />}
       </main>
     </div>
   );
