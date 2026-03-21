@@ -138,6 +138,18 @@ export interface RecentBudgetAlert extends BudgetAlert {
   RuleName: string;
 }
 
+export interface SpanEval {
+  ProjectID: string;
+  RunID: string;
+  SpanID: string;
+  EvalName: string;
+  Score: number;      // 0.0 – 1.0
+  Reasoning: string;
+  JudgeModel: string;
+  EvalVersion: number;
+  CreatedAt: string;
+}
+
 // WsAlertEvent is the real-time alert pushed over WebSocket by the backend hub.
 // Field names match the Go alert.Event JSON serialisation (snake_case).
 export interface WsAlertEvent {

@@ -3,16 +3,31 @@
 import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { runsApi } from "@/lib/api";
+import { runsApi, evalsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
-import type { Span } from "@/lib/types";
+import type { Span, SpanEval } from "@/lib/types";
 import { formatDurationNS } from "@/lib/format";
 
-function SpanRow({ span, onClick }: { span: Span; onClick: () => void }) {
+function scoreColorClasses(score: number): string {
+  if (score >= 0.7) return "bg-green-950/40 border border-green-700 text-green-400";
+  if (score >= 0.4) return "bg-amber-950/40 border border-amber-700 text-amber-400";
+  return "bg-red-950/40 border border-red-700 text-red-400";
+}
+
+function ScoreBadge({ eval: e }: { eval: SpanEval }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono tabular-nums shrink-0 ${scoreColorClasses(e.Score)}`}>
+      <span>●</span>
+      <span>{e.Score.toFixed(2)}</span>
+    </span>
+  );
+}
+
+function SpanRow({ span, eval: spanEval, onClick }: { span: Span; eval?: SpanEval; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
@@ -30,7 +45,8 @@ function SpanRow({ span, onClick }: { span: Span; onClick: () => void }) {
           </p>
         )}
       </div>
-      <div className="flex gap-4 text-xs tabular-nums text-[var(--text-muted)] shrink-0">
+      <div className="flex items-center gap-4 text-xs tabular-nums text-[var(--text-muted)] shrink-0">
+        {spanEval && <ScoreBadge eval={spanEval} />}
         {span.TotalTokens > 0 && <span>{span.TotalTokens.toLocaleString()} tok</span>}
         {span.CostUSD > 0 && <span>${span.CostUSD.toFixed(5)}</span>}
         <span>{formatDurationNS(span.DurationNS)}</span>
@@ -57,7 +73,18 @@ export default function RunPage({
     queryFn: () => runsApi.spans(runId),
   });
 
+  const { data: evals } = useQuery({
+    queryKey: ["evals", runId],
+    queryFn: () => evalsApi.listByRun(runId),
+  });
+
+  // Build a map from spanId to the latest eval (for the "relevance" eval_name)
+  const evalsBySpan = new Map<string, SpanEval>(
+    evals?.map((e) => [e.SpanID, e]) ?? []
+  );
+
   const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
+  const selectedEval = selectedSpanId ? evalsBySpan.get(selectedSpanId) : undefined;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -110,7 +137,12 @@ export default function RunPage({
 
         <div className="flex flex-col gap-2">
           {spans?.map((s) => (
-            <SpanRow key={s.SpanID} span={s} onClick={() => setSelectedSpanId(s.SpanID)} />
+            <SpanRow
+              key={s.SpanID}
+              span={s}
+              eval={evalsBySpan.get(s.SpanID)}
+              onClick={() => setSelectedSpanId(s.SpanID)}
+            />
           ))}
           {!spansLoading && spans?.length === 0 && (
             <div className="text-[var(--text-muted)] text-center py-8">No spans found.</div>
@@ -120,6 +152,7 @@ export default function RunPage({
 
       <SpanDetailDrawer
         span={selectedSpan}
+        eval={selectedEval}
         runStartTime={run?.StartTime ?? ""}
         onClose={() => setSelectedSpanId(null)}
       />

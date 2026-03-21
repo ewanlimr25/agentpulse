@@ -20,6 +20,7 @@ func NewRouter(
 	spans store.SpanStore,
 	topology store.TopologyStore,
 	budget store.BudgetStore,
+	evals store.EvalStore,
 	hub *alert.Hub,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -38,6 +39,7 @@ func NewRouter(
 	runHandler := handler.NewRunHandler(runs, spans)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
+	evalHandler := handler.NewEvalHandler(evals)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Projects
@@ -59,6 +61,7 @@ func NewRouter(
 		r.Route("/runs/{runID}", func(r chi.Router) {
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
+			r.Get("/evals", evalHandler.ListByRun)
 			r.Route("/topology", func(r chi.Router) {
 				topologyHandler.Routes(r)
 			})

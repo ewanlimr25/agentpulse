@@ -1,11 +1,18 @@
-import type { Span } from "@/lib/types";
+import type { Span, SpanEval } from "@/lib/types";
 import { SpanKindBadge } from "./SpanKindBadge";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { formatDurationNS } from "@/lib/format";
 
 interface Props {
   span: Span;
+  eval?: SpanEval;
   runStartTime: string;
+}
+
+function evalScoreClasses(score: number): string {
+  if (score >= 0.7) return "bg-green-950/40 border border-green-700 text-green-400";
+  if (score >= 0.4) return "bg-amber-950/40 border border-amber-700 text-amber-400";
+  return "bg-red-950/40 border border-red-700 text-red-400";
 }
 
 function StatusDot({ code }: { code: string }) {
@@ -61,7 +68,7 @@ function groupAttributes(attrs: Record<string, string>): [string, [string, strin
   return sorted;
 }
 
-export function SpanDetailContent({ span, runStartTime }: Props) {
+export function SpanDetailContent({ span, eval: spanEval, runStartTime }: Props) {
   const runStart = new Date(runStartTime).getTime();
   const spanStart = new Date(span.StartTime).getTime();
   const offsetMS = spanStart - runStart;
@@ -119,6 +126,28 @@ export function SpanDetailContent({ span, runStartTime }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Quality Score */}
+      {spanEval && (
+        <div>
+          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Quality Score</p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono tabular-nums ${evalScoreClasses(spanEval.Score)}`}>
+                <span>●</span>
+                <span>{spanEval.Score.toFixed(2)}</span>
+              </span>
+              <span className="text-xs text-[var(--text-muted)] capitalize">{spanEval.EvalName}</span>
+            </div>
+            {spanEval.Reasoning && (
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">{spanEval.Reasoning}</p>
+            )}
+            <p className="text-xs text-[var(--text-muted)]">
+              judge: <span className="font-mono text-[var(--text)]">{spanEval.JudgeModel}</span>
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Cost & Tokens (LLM only) */}
       {span.AgentSpanKind === "llm.call" && (span.TotalTokens > 0 || span.CostUSD > 0) && (

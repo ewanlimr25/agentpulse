@@ -1,4 +1,4 @@
-import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert } from "./types";
+import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -37,6 +37,13 @@ export const runsApi = {
   spans: (runId: string) => apiFetch<Span[]>(`/api/v1/runs/${runId}/spans`),
   topology: (runId: string) =>
     apiFetch<Topology>(`/api/v1/runs/${runId}/topology`),
+};
+
+// ── Evals ─────────────────────────────────────────────────────────────────────
+
+export const evalsApi = {
+  listByRun: (runId: string) =>
+    apiFetch<SpanEval[]>(`/api/v1/runs/${runId}/evals`),
 };
 
 // ── Budget ────────────────────────────────────────────────────────────────────

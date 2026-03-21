@@ -30,6 +30,7 @@ dev-logs: ## Tail infrastructure logs
 migrate-up: ## Apply all pending migrations
 	@echo "Applying Postgres migrations..."
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/001_initial.up.sql
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/002_eval_jobs.up.sql
 	@echo "Applying ClickHouse migrations..."
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/001_spans.sql
@@ -37,9 +38,12 @@ migrate-up: ## Apply all pending migrations
 		--database agentpulse < migrations/clickhouse/002_metrics_agg.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/003_run_metrics.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/004_span_evals.sql
 	@echo "Migrations complete."
 
 migrate-down: ## Roll back Postgres migrations
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/002_eval_jobs.down.sql
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/001_initial.down.sql
 
 # ── Collector ─────────────────────────────────────────────────────────────────
@@ -84,9 +88,13 @@ db-reset: ## Truncate all app data (keeps schema; safe to re-seed)
 	@echo "Resetting Postgres..."
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse -c \
 		"TRUNCATE budget_alerts, budget_rules, topology_edges, topology_nodes, projects CASCADE;"
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse -c \
+		"TRUNCATE eval_jobs;"
 	@echo "Resetting ClickHouse..."
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse --query "TRUNCATE TABLE spans;"
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse --query "TRUNCATE TABLE span_evals;"
 	@echo "Database reset complete."
 
 seed: db-reset ## Create demo projects via API and seed with realistic multi-agent runs

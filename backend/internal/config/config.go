@@ -8,10 +8,11 @@ import (
 // Config holds all runtime configuration for the backend API.
 // Values are read from environment variables.
 type Config struct {
-	HTTP       HTTPConfig
-	Postgres   PostgresConfig
-	ClickHouse ClickHouseConfig
-	S3         S3Config
+	HTTP             HTTPConfig
+	Postgres         PostgresConfig
+	ClickHouse       ClickHouseConfig
+	S3               S3Config
+	AnthropicAPIKey  string
 }
 
 type HTTPConfig struct {
@@ -60,6 +61,7 @@ func Load() (*Config, error) {
 			AccessKey: getEnv("S3_ACCESS_KEY", "agentpulse"),
 			SecretKey: getEnv("S3_SECRET_KEY", "agentpulse"),
 		},
+		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
 	}
 
 	if err := cfg.validate(); err != nil {

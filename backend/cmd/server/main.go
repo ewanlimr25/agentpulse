@@ -12,6 +12,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
+	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
 )
@@ -49,6 +50,8 @@ func main() {
 	projectStore := pgstore.NewProjectStore(pgPool)
 	topologyStore := pgstore.NewTopologyStore(pgPool)
 	budgetStore := pgstore.NewBudgetStore(pgPool)
+	evalStore := chstore.NewEvalStore(chConn)
+	evalJobStore := pgstore.NewEvalJobStore(pgPool)
 
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -59,8 +62,17 @@ func main() {
 	go hub.Run()
 	go alert.NewPoller(pgPool, hub).Run(ctx)
 
+	// ── Eval workers ──────────────────────────────────────────────────────
+	if cfg.AnthropicAPIKey != "" {
+		go eval.NewEnqueuer(chConn, evalJobStore).Run(ctx)
+		go eval.NewWorker(chConn, evalJobStore, evalStore, cfg.AnthropicAPIKey).Run(ctx)
+		slog.Info("eval worker started")
+	} else {
+		slog.Info("eval worker disabled (ANTHROPIC_API_KEY not set)")
+	}
+
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, hub)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, hub)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

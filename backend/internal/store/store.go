@@ -47,3 +47,23 @@ type BudgetStore interface {
 	ListAlerts(ctx context.Context, projectID string, limit int) ([]*domain.BudgetAlert, error)
 	ListRecentAlerts(ctx context.Context, limit int) ([]*domain.RecentBudgetAlert, error)
 }
+
+// EvalStore writes and reads quality scores.
+type EvalStore interface {
+	// Insert writes a score to ClickHouse.
+	Insert(ctx context.Context, e *domain.SpanEval) error
+	// ListByRun returns all evals for all spans in a run.
+	ListByRun(ctx context.Context, runID string) ([]*domain.SpanEval, error)
+}
+
+// EvalJobStore manages the async eval work queue in Postgres.
+type EvalJobStore interface {
+	// Enqueue inserts a job; silently ignores duplicates (span_id, eval_name).
+	Enqueue(ctx context.Context, jobs []*domain.EvalJob) error
+	// Claim atomically claims up to n pending jobs for processing.
+	Claim(ctx context.Context, n int) ([]*domain.EvalJob, error)
+	// MarkDone marks a job as successfully completed.
+	MarkDone(ctx context.Context, id string) error
+	// MarkFailed marks a job as failed with an error message.
+	MarkFailed(ctx context.Context, id, errMsg string) error
+}
