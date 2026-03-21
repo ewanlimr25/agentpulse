@@ -44,6 +44,19 @@ Respond with valid JSON only, no other text:
 {"score": <float>, "reasoning": "<one sentence>"}`
 }
 
+// stripMarkdownFences removes ```json ... ``` or ``` ... ``` wrappers if present.
+func stripMarkdownFences(s string) string {
+	s = strings.TrimSpace(s)
+	for _, fence := range []string{"```json", "```"} {
+		if strings.HasPrefix(s, fence) {
+			s = strings.TrimPrefix(s, fence)
+			s = strings.TrimSuffix(s, "```")
+			return strings.TrimSpace(s)
+		}
+	}
+	return s
+}
+
 // xmlEscape replaces characters that could break XML tag boundaries.
 func xmlEscape(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
@@ -81,7 +94,11 @@ func callJudge(ctx context.Context, apiKey, input, output string) (*judgeRespons
 	body, _ := json.Marshal(anthropicRequest{
 		Model:     judgeModel,
 		MaxTokens: 256,
-		Messages:  []anthropicMessage{{Role: "user", Content: prompt}},
+		// Prefill forces Claude to start with '{', preventing markdown fences.
+		Messages: []anthropicMessage{
+			{Role: "user", Content: prompt},
+			{Role: "assistant", Content: "{"},
+		},
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicAPIURL, bytes.NewReader(body))
@@ -109,8 +126,13 @@ func callJudge(ctx context.Context, apiKey, input, output string) (*judgeRespons
 		return nil, fmt.Errorf("judge: parse anthropic response: %w", err)
 	}
 
+	// Reconstruct the full JSON: the prefill '{' is not echoed back by the API,
+	// so we prepend it. Also strip any accidental markdown fences defensively.
+	text := "{" + ar.Content[0].Text
+	text = stripMarkdownFences(text)
+
 	var jr judgeResponse
-	if err := json.Unmarshal([]byte(ar.Content[0].Text), &jr); err != nil {
+	if err := json.Unmarshal([]byte(text), &jr); err != nil {
 		return nil, fmt.Errorf("judge: parse score json: %w", err)
 	}
 
