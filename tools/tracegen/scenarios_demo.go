@@ -13,6 +13,44 @@ import (
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
+// sampleConversations provides realistic prompt/completion pairs for eval testing.
+// Each entry is {prompt, completion}. withLLM picks one at random so spans have
+// varied content for the LLM judge to score.
+var sampleConversations = [][2]string{
+	{
+		"Analyze the customer's message and classify their intent into one of: billing, technical, shipping, general.",
+		"Based on the customer message I classify this as a billing dispute. The customer is questioning a charge from last month and wants a refund. Confidence: high.",
+	},
+	{
+		"Review the following code diff and identify any security vulnerabilities or quality issues.",
+		"I identified 2 issues: (1) SQL injection risk on line 45 — user input is concatenated directly into the query; (2) missing authentication check before the admin endpoint on line 78. Both are HIGH severity.",
+	},
+	{
+		"Synthesize the following research sources into a concise summary of key findings.",
+		"Three key findings emerge: latency increases non-linearly with batch size above 256; memory peaks at model initialization; throughput scales linearly up to 8 parallel workers before contention appears.",
+	},
+	{
+		"Verify the following claim: 'The new feature reduced p99 latency by 40%'.",
+		"Claim is SUPPORTED. Benchmark data from three test runs shows p99 latency dropped from 840ms to 504ms — a 40.0% reduction. Sample size is adequate (n=1200 per run).",
+	},
+	{
+		"Draft a helpful response to this customer support inquiry about a delayed shipment.",
+		"Thank you for reaching out. I can see your order #84729 is currently held at the regional distribution center due to weather delays. I've escalated this to priority handling and you should receive it within 2 business days. I'm applying a 10% discount to your next order as an apology for the inconvenience.",
+	},
+	{
+		"Assess the credibility of the following sources and identify any conflicting information.",
+		"Source A and Source C are credible (peer-reviewed, recent). Source B contains outdated statistics from 2019 that conflict with current data. I recommend relying on Sources A and C; Source B should be cited only for historical context.",
+	},
+	{
+		"Diagnose the root cause of the pipeline failure based on the error logs provided.",
+		"Root cause: the upstream Kafka topic 'events-raw' has a consumer lag of 2.3M messages, indicating the consumer group 'pipeline-worker' stopped processing 47 minutes ago. Likely cause: OOM kill on worker node ip-10-0-4-23. Recommended action: restart the consumer group and increase memory limits.",
+	},
+	{
+		"Write a brief summary of the PR changes and assess whether they are ready to merge.",
+		"This PR refactors the authentication middleware to use JWT instead of session cookies. Changes are clean and well-tested (92% coverage). One concern: the token expiry is hardcoded to 24h — recommend making it configurable. Otherwise ready to merge pending that fix.",
+	},
+}
+
 func randTokens(minInput, maxInput, minOutput, maxOutput int) (int, int) {
 	input := minInput + rand.Intn(maxInput-minInput)
 	output := minOutput + rand.Intn(maxOutput-minOutput)
@@ -28,6 +66,7 @@ func baseAttrs(projectID, runID, agentName string) []attribute.KeyValue {
 }
 
 func withLLM(model, system string, inputTokens, outputTokens int) []attribute.KeyValue {
+	conv := sampleConversations[rand.Intn(len(sampleConversations))]
 	return []attribute.KeyValue{
 		attribute.String("agentpulse.span.kind", "llm.call"),
 		attribute.String("gen_ai.operation.name", "chat"),
@@ -35,6 +74,8 @@ func withLLM(model, system string, inputTokens, outputTokens int) []attribute.Ke
 		attribute.String("gen_ai.request.model", model),
 		attribute.Int("gen_ai.usage.input_tokens", inputTokens),
 		attribute.Int("gen_ai.usage.output_tokens", outputTokens),
+		attribute.String("gen_ai.prompt", conv[0]),
+		attribute.String("gen_ai.completion", conv[1]),
 	}
 }
 
