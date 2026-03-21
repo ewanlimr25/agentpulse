@@ -1,11 +1,12 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { TopologyGraph } from "@/components/topology/TopologyGraph";
+import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 
 export default function TopologyPage({
   params,
@@ -13,11 +14,30 @@ export default function TopologyPage({
   params: Promise<{ projectId: string; runId: string }>;
 }) {
   const { projectId, runId } = use(params);
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
 
   const { data: topology, isLoading, error } = useQuery({
     queryKey: ["topology", runId],
     queryFn: () => runsApi.topology(runId),
   });
+
+  const { data: run } = useQuery({
+    queryKey: ["run", runId],
+    queryFn: () => runsApi.get(runId),
+  });
+
+  const { data: spans } = useQuery({
+    queryKey: ["spans", runId],
+    queryFn: () => runsApi.spans(runId),
+  });
+
+  function handleNodeClick(nodeId: string) {
+    const node = topology?.Nodes?.find((n) => n.ID === nodeId);
+    if (!node?.SpanID) return;
+    setSelectedSpanId(node.SpanID);
+  }
+
+  const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
 
   return (
     <div className="flex flex-col h-screen">
@@ -47,8 +67,14 @@ export default function TopologyPage({
             {(error as Error).message}
           </div>
         )}
-        {topology && <TopologyGraph topology={topology} />}
+        {topology && <TopologyGraph topology={topology} onNodeClick={handleNodeClick} />}
       </div>
+
+      <SpanDetailDrawer
+        span={selectedSpan}
+        runStartTime={run?.StartTime ?? ""}
+        onClose={() => setSelectedSpanId(null)}
+      />
     </div>
   );
 }

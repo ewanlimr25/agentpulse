@@ -18,6 +18,7 @@ import { applyDagreLayout } from "./layout";
 
 interface Props {
   topology: Topology;
+  onNodeClick?: (nodeId: string) => void;
 }
 
 const edgeStyle: Record<string, { stroke: string; label: string }> = {
@@ -26,7 +27,7 @@ const edgeStyle: Record<string, { stroke: string; label: string }> = {
   memory_access: { stroke: "#f59e0b", label: "memory" },
 };
 
-export function TopologyGraph({ topology }: Props) {
+export function TopologyGraph({ topology, onNodeClick }: Props) {
   const { nodes, edges } = useMemo(() => {
     const rawNodes: Node[] = (topology.Nodes ?? []).map((n) => ({
       id: n.ID,
@@ -78,6 +79,7 @@ export function TopologyGraph({ topology }: Props) {
       nodesDraggable
       nodesConnectable={false}
       elementsSelectable
+      onNodeClick={onNodeClick ? (_, node) => onNodeClick(node.id) : undefined}
     >
       <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#2d3148" />
       <Controls className="!bg-[var(--surface)] !border-[var(--border)]" />

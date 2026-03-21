@@ -1,36 +1,24 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
+import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
+import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 import type { Span } from "@/lib/types";
+import { formatDurationNS } from "@/lib/format";
 
-const kindColor: Record<string, string> = {
-  "llm.call": "text-violet-400 bg-violet-950/40 border-violet-800",
-  "tool.call": "text-sky-400 bg-sky-950/40 border-sky-800",
-  "agent.handoff": "text-green-400 bg-green-950/40 border-green-800",
-  "memory.read": "text-amber-400 bg-amber-950/40 border-amber-800",
-  "memory.write": "text-orange-400 bg-orange-950/40 border-orange-800",
-  unknown: "text-zinc-400 bg-zinc-800 border-zinc-700",
-};
-
-function formatDurationNS(ns: number) {
-  if (ns < 1_000_000) return `${(ns / 1_000).toFixed(0)}µs`;
-  if (ns < 1_000_000_000) return `${(ns / 1_000_000).toFixed(1)}ms`;
-  return `${(ns / 1_000_000_000).toFixed(2)}s`;
-}
-
-function SpanRow({ span }: { span: Span }) {
-  const cls = kindColor[span.AgentSpanKind] ?? kindColor.unknown;
+function SpanRow({ span, onClick }: { span: Span; onClick: () => void }) {
   return (
-    <div className="flex items-start gap-4 px-4 py-3 border border-[var(--border)] bg-[var(--surface)] rounded-lg text-sm">
-      <span className={`shrink-0 rounded border px-2 py-0.5 text-xs font-medium ${cls}`}>
-        {span.AgentSpanKind}
-      </span>
+    <div
+      onClick={onClick}
+      className="flex items-start gap-4 px-4 py-3 border border-[var(--border)] bg-[var(--surface)] rounded-lg text-sm cursor-pointer hover:border-indigo-600/60 transition-colors"
+    >
+      <SpanKindBadge kind={span.AgentSpanKind} />
       <div className="flex-1 min-w-0">
         <p className="font-medium text-[var(--text)] truncate">{span.SpanName}</p>
         {span.AgentName && (
@@ -57,6 +45,7 @@ export default function RunPage({
   params: Promise<{ projectId: string; runId: string }>;
 }) {
   const { projectId, runId } = use(params);
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
@@ -67,6 +56,8 @@ export default function RunPage({
     queryKey: ["spans", runId],
     queryFn: () => runsApi.spans(runId),
   });
+
+  const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -118,12 +109,20 @@ export default function RunPage({
         {spansLoading && <div className="text-[var(--text-muted)]">Loading spans...</div>}
 
         <div className="flex flex-col gap-2">
-          {spans?.map((s) => <SpanRow key={s.SpanID} span={s} />)}
+          {spans?.map((s) => (
+            <SpanRow key={s.SpanID} span={s} onClick={() => setSelectedSpanId(s.SpanID)} />
+          ))}
           {!spansLoading && spans?.length === 0 && (
             <div className="text-[var(--text-muted)] text-center py-8">No spans found.</div>
           )}
         </div>
       </main>
+
+      <SpanDetailDrawer
+        span={selectedSpan}
+        runStartTime={run?.StartTime ?? ""}
+        onClose={() => setSelectedSpanId(null)}
+      />
     </div>
   );
 }

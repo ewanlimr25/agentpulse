@@ -42,6 +42,22 @@ body {
   animation: toast-out 0.2s ease-in forwards;
 }
 
+/* Drawer animations */
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes drawer-out {
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+}
+.drawer-enter {
+  animation: drawer-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.drawer-exit {
+  animation: drawer-out 0.2s ease-in forwards;
+}
+
 /* React Flow overrides */
 .react-flow__background {
   background: var(--background) !important;
