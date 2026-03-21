@@ -37,10 +37,15 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list runs")
 		return
 	}
+	total, err := h.runs.Count(r.Context(), projectID)
+	if err != nil {
+		total = 0 // non-fatal; frontend degrades gracefully
+	}
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"runs":   runs,
 		"limit":  limit,
 		"offset": offset,
+		"total":  total,
 	})
 }
 

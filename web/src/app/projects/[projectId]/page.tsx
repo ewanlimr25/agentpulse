@@ -2,48 +2,34 @@
 
 import { use, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InfiniteData } from "@tanstack/react-query";
 import Link from "next/link";
-import { runsApi, projectsApi } from "@/lib/api";
+import { projectsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
-import type { Run } from "@/lib/types";
+import type { Run, RunsListResponse } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
 import { TabBar } from "@/components/ui/TabBar";
 import { BudgetSection } from "@/components/budget/BudgetSection";
+import { RunList } from "@/components/runs/RunList";
+import { formatCost } from "@/components/runs/RunRow";
 
-function formatDuration(ms: number) {
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
-function formatCost(usd: number) {
-  if (usd < 0.001) return `$${(usd * 1000).toFixed(2)}m`;
-  return `$${usd.toFixed(4)}`;
-}
-
-function RunRow({ run, projectId }: { run: Run; projectId: string }) {
-  return (
-    <Link
-      href={`/projects/${projectId}/runs/${run.RunID}`}
-      className="flex items-center gap-4 px-5 py-4 border border-[var(--border)] bg-[var(--surface)] rounded-xl hover:border-indigo-600 transition-colors group"
-    >
-      <StatusBadge status={run.Status === "ok" ? "ok" : "error"} />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-mono text-[var(--text-muted)] truncate">{run.RunID}</p>
-        <p className="text-xs text-[var(--text-muted)]">
-          {new Date(run.StartTime).toLocaleString()}
-        </p>
-      </div>
-      <div className="flex gap-6 text-sm tabular-nums">
-        <span className="text-[var(--text-muted)]">{formatDuration(run.DurationMS)}</span>
-        <span className="text-indigo-400">{formatCost(run.TotalCostUSD)}</span>
-        <span className="text-[var(--text-muted)]">{run.TotalTokens.toLocaleString()} tok</span>
-        <span className="text-[var(--text-muted)]">{run.SpanCount} spans</span>
-      </div>
-    </Link>
-  );
+function useAllFetchedRuns(projectId: string): Run[] {
+  const qc = useQueryClient();
+  const cached = qc.getQueryData<InfiniteData<RunsListResponse>>(["runs", projectId]);
+  if (!cached) return [];
+  const seen = new Set<string>();
+  const runs: Run[] = [];
+  for (const page of cached.pages) {
+    for (const run of page.runs) {
+      if (!seen.has(run.RunID)) {
+        seen.add(run.RunID);
+        runs.push(run);
+      }
+    }
+  }
+  return runs;
 }
 
 export default function ProjectPage({
@@ -62,15 +48,10 @@ export default function ProjectPage({
     queryFn: () => projectsApi.get(projectId),
   });
 
-  const { data: runsData, isLoading, error } = useQuery({
-    queryKey: ["runs", projectId],
-    queryFn: () => runsApi.list(projectId),
-    refetchInterval: 10_000,
-  });
+  // Reads from the same cache key that RunList populates via useInfiniteQuery
+  const runs = useAllFetchedRuns(projectId);
 
-  const runs = runsData?.runs ?? [];
-
-  // Aggregate stats
+  // Aggregate stats across all fetched runs
   const totalCost = runs.reduce((s, r) => s + r.TotalCostUSD, 0);
   const totalTokens = runs.reduce((s, r) => s + r.TotalTokens, 0);
   const errorRate = runs.length
@@ -109,22 +90,7 @@ export default function ProjectPage({
             <RunCharts runs={runs} />
 
             <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
-
-            {isLoading && <div className="text-[var(--text-muted)]">Loading runs...</div>}
-            {error && (
-              <div className="text-red-400">Failed to load runs: {(error as Error).message}</div>
-            )}
-
-            <div className="flex flex-col gap-3">
-              {runs.map((r) => (
-                <RunRow key={r.RunID} run={r} projectId={projectId} />
-              ))}
-              {!isLoading && runs.length === 0 && (
-                <div className="text-[var(--text-muted)] border border-[var(--border)] rounded-xl px-6 py-10 text-center">
-                  No runs yet. Send traces with <code className="text-indigo-400">make seed</code>.
-                </div>
-              )}
-            </div>
+            <RunList projectId={projectId} />
           </>
         )}
 

@@ -37,6 +37,10 @@ ORDER BY min_start DESC
 LIMIT ? OFFSET ?
 `
 
+const countRunsQuery = `
+SELECT count() FROM run_metrics WHERE project_id = ?
+`
+
 const getRunQuery = `
 SELECT
     run_id, project_id, trace_id,
@@ -65,6 +69,15 @@ func (s *RunStore) List(ctx context.Context, projectID string, limit, offset int
 		runs = append(runs, r)
 	}
 	return runs, rows.Err()
+}
+
+func (s *RunStore) Count(ctx context.Context, projectID string) (int, error) {
+	row := s.conn.QueryRow(ctx, countRunsQuery, projectID)
+	var n uint64
+	if err := row.Scan(&n); err != nil {
+		return 0, fmt.Errorf("run_store count query: %w", err)
+	}
+	return int(n), nil
 }
 
 func (s *RunStore) Get(ctx context.Context, runID string) (*domain.Run, error) {

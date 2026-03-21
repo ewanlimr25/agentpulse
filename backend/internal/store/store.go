@@ -18,6 +18,8 @@ type SpanStore interface {
 type RunStore interface {
 	// List returns runs for a project, newest first, paginated.
 	List(ctx context.Context, projectID string, limit, offset int) ([]*domain.Run, error)
+	// Count returns the total number of runs for a project.
+	Count(ctx context.Context, projectID string) (int, error)
 	// Get returns a single run with its aggregated metrics.
 	Get(ctx context.Context, runID string) (*domain.Run, error)
 }

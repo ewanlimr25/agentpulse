@@ -100,6 +100,13 @@ export interface Topology {
   Edges: TopologyEdge[];
 }
 
+export interface RunsListResponse {
+  runs: Run[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface BudgetRule {
   ID: string;
   ProjectID: string;

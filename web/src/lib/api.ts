@@ -1,4 +1,4 @@
-import type { Project, Run, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert } from "./types";
+import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -29,8 +29,8 @@ export const projectsApi = {
 // ── Runs ─────────────────────────────────────────────────────────────────────
 
 export const runsApi = {
-  list: (projectId: string, limit = 50, offset = 0) =>
-    apiFetch<{ runs: Run[]; limit: number; offset: number }>(
+  list: (projectId: string, limit = 20, offset = 0) =>
+    apiFetch<RunsListResponse>(
       `/api/v1/projects/${projectId}/runs?limit=${limit}&offset=${offset}`
     ),
   get: (runId: string) => apiFetch<Run>(`/api/v1/runs/${runId}`),
