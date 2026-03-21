@@ -64,6 +64,9 @@ func NewRouter(
 			})
 		})
 
+		// Cross-project recent alerts (for global toast poller)
+		r.Get("/budget/alerts/recent", budgetHandler.ListRecent)
+
 		// WebSocket — real-time budget alerts
 		r.Get("/ws/alerts", hub.ServeWS)
 	})

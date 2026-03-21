@@ -43,4 +43,5 @@ type BudgetStore interface {
 	UpdateRule(ctx context.Context, r *domain.BudgetRule) error
 	DeleteRule(ctx context.Context, id string) error
 	ListAlerts(ctx context.Context, projectID string, limit int) ([]*domain.BudgetAlert, error)
+	ListRecentAlerts(ctx context.Context, limit int) ([]*domain.RecentBudgetAlert, error)
 }

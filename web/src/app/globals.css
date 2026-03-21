@@ -26,6 +26,22 @@ body {
   font-family: var(--font-geist-sans), sans-serif;
 }
 
+/* Toast animations */
+@keyframes toast-in {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes toast-out {
+  from { transform: translateX(0);    opacity: 1; }
+  to   { transform: translateX(110%); opacity: 0; }
+}
+.toast-enter {
+  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.toast-exit {
+  animation: toast-out 0.2s ease-in forwards;
+}
+
 /* React Flow overrides */
 .react-flow__background {
   background: var(--background) !important;

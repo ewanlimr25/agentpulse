@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useRef } from "react";
 
 import { budgetApi } from "@/lib/api";
@@ -6,10 +8,11 @@ import { useToast } from "@/components/toast/ToastContext";
 const POLL_INTERVAL_MS = 5_000;
 
 /**
- * Polls budget alerts every 5 s for a specific project and fires toasts for
- * new ones. Used by BudgetSection to keep the per-project alert table fresh.
+ * Polls recent budget alerts across ALL projects every 5 s.
+ * Shows a toast with project name, rule name, and a link to the budget page.
+ * Mount once at the app root (Providers) so it works on any page.
  */
-export function useAlertWebSocket(projectId: string): { isConnected: boolean } {
+export function useGlobalAlertPoller() {
   const { addToast } = useToast();
   const addToastRef = useRef(addToast);
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
@@ -19,16 +22,17 @@ export function useAlertWebSocket(projectId: string): { isConnected: boolean } {
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!projectId) return;
 
     const poll = async () => {
       if (!mountedRef.current) return;
       try {
-        const alerts = await budgetApi.listAlerts(projectId, 10);
+        const alerts = await budgetApi.listRecentAlerts(20);
         if (!mountedRef.current || alerts.length === 0) return;
 
         const latest = alerts[0].TriggeredAt;
+
         if (lastSeenRef.current === null) {
+          // First fetch — set cursor without showing toasts for old history.
           lastSeenRef.current = latest;
           return;
         }
@@ -36,25 +40,25 @@ export function useAlertWebSocket(projectId: string): { isConnected: boolean } {
         const newAlerts = alerts.filter(
           (a) => a.TriggeredAt > lastSeenRef.current!
         );
+
         for (const alert of newAlerts.reverse()) {
           const isHalt = alert.ActionTaken === "halted";
-          const runSuffix = alert.RunID ? ` on run ${alert.RunID.slice(0, 8)}` : "";
           addToastRef.current({
-            title: `Budget Alert — ${isHalt ? "Run Halted" : "Notified"}`,
-            message: `Cost $${alert.CurrentCost.toFixed(4)} exceeded $${alert.ThresholdUSD.toFixed(4)} threshold${runSuffix}`,
+            title: `${alert.ProjectName} — ${isHalt ? "Run Halted" : "Budget Alert"}`,
+            message: `${alert.RuleName}: cost $${alert.CurrentCost.toFixed(4)} exceeded $${alert.ThresholdUSD.toFixed(4)}`,
             variant: isHalt ? "halt" : "notify",
+            href: `/projects/${alert.ProjectID}?tab=budget`,
           });
         }
+
         if (newAlerts.length > 0) {
           lastSeenRef.current = newAlerts[newAlerts.length - 1].TriggeredAt;
         }
-      } catch { /* swallow — table UI shows errors */ }
+      } catch { /* network errors are non-fatal */ }
     };
 
     poll();
     const id = setInterval(poll, POLL_INTERVAL_MS);
     return () => { mountedRef.current = false; clearInterval(id); };
-  }, [projectId]);
-
-  return { isConnected: true };
+  }, []); // no deps — runs once for the app lifetime
 }

@@ -124,3 +124,22 @@ export interface BudgetAlert {
   ThresholdUSD: number;
   ActionTaken: string;
 }
+
+// RecentBudgetAlert is a cross-project alert enriched with project and rule names.
+export interface RecentBudgetAlert extends BudgetAlert {
+  ProjectName: string;
+  RuleName: string;
+}
+
+// WsAlertEvent is the real-time alert pushed over WebSocket by the backend hub.
+// Field names match the Go alert.Event JSON serialisation (snake_case).
+export interface WsAlertEvent {
+  type: string;        // "budget.alert"
+  project_id: string;
+  run_id?: string;
+  rule_id: string;
+  rule_name: string;
+  cost_usd: number;
+  limit_usd: number;
+  action: string;      // "notify" | "halt"
+}

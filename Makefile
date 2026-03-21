@@ -80,7 +80,16 @@ test-web: ## Run frontend tests
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
-seed: ## Create demo projects via API and seed with realistic multi-agent runs
+db-reset: ## Truncate all app data (keeps schema; safe to re-seed)
+	@echo "Resetting Postgres..."
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse -c \
+		"TRUNCATE budget_alerts, budget_rules, topology_edges, topology_nodes, projects CASCADE;"
+	@echo "Resetting ClickHouse..."
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse --query "TRUNCATE TABLE spans;"
+	@echo "Database reset complete."
+
+seed: db-reset ## Create demo projects via API and seed with realistic multi-agent runs
 	go run ./tools/tracegen/... --demo
 
 # ── Combined ─────────────────────────────────────────────────────────────────

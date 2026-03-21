@@ -87,6 +87,19 @@ func (s *budgetStore) loadRules(ctx context.Context) ([]budgetRule, error) {
 	return rules, rows.Err()
 }
 
+// actionToPast converts action verbs ("notify","halt") to the past-tense form
+// required by the budget_alerts.action_taken check constraint.
+func actionToPast(action string) string {
+	switch action {
+	case "notify":
+		return "notified"
+	case "halt":
+		return "halted"
+	default:
+		return action
+	}
+}
+
 // writeAlert inserts a budget_alerts row.
 func (s *budgetStore) writeAlert(ctx context.Context, ruleID, projectID string, runID *string, cost, threshold float64, action string) error {
 	if s.pool == nil {
@@ -97,7 +110,7 @@ func (s *budgetStore) writeAlert(ctx context.Context, ruleID, projectID string, 
 		  (id, rule_id, project_id, run_id, triggered_at, current_cost, threshold_usd, action_taken, metadata)
 		VALUES
 		  (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, '{}')
-	`, ruleID, projectID, runID, time.Now(), cost, threshold, action)
+	`, ruleID, projectID, runID, time.Now(), cost, threshold, actionToPast(action))
 	if err != nil {
 		return fmt.Errorf("budget store write alert: %w", err)
 	}

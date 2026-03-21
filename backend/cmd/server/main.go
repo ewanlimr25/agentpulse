@@ -50,9 +50,14 @@ func main() {
 	topologyStore := pgstore.NewTopologyStore(pgPool)
 	budgetStore := pgstore.NewBudgetStore(pgPool)
 
+	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	// ── Alert hub ─────────────────────────────────────────────────────────
 	hub := alert.NewHub()
 	go hub.Run()
+	go alert.NewPoller(pgPool, hub).Run(ctx)
 
 	// ── HTTP server ───────────────────────────────────────────────────────
 	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, hub)
@@ -73,15 +78,13 @@ func main() {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
 	slog.Info("shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutCtx); err != nil {
 		slog.Error("forced shutdown", "error", err)
 	}
 	slog.Info("server stopped")

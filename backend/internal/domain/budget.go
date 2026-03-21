@@ -38,6 +38,13 @@ type BudgetRule struct {
 	UpdatedAt time.Time
 }
 
+// RecentBudgetAlert is a cross-project alert enriched with project and rule names.
+type RecentBudgetAlert struct {
+	BudgetAlert
+	ProjectName string
+	RuleName    string
+}
+
 // BudgetAlert records a threshold breach event.
 type BudgetAlert struct {
 	ID        string

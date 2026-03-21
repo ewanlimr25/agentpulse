@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi, projectsApi } from "@/lib/api";
@@ -51,7 +52,10 @@ export default function ProjectPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = use(params);
-  const [activeTab, setActiveTab] = useState<"overview" | "budget">("overview");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"overview" | "budget">(
+    searchParams.get("tab") === "budget" ? "budget" : "overview"
+  );
 
   const { data: project } = useQuery({
     queryKey: ["project", projectId],

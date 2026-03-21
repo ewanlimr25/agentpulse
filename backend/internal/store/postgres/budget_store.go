@@ -97,6 +97,38 @@ func (s *BudgetStore) DeleteRule(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *BudgetStore) ListRecentAlerts(ctx context.Context, limit int) ([]*domain.RecentBudgetAlert, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ba.id, ba.rule_id, ba.project_id, ba.run_id,
+		       ba.triggered_at, ba.current_cost, ba.threshold_usd, ba.action_taken,
+		       p.name  AS project_name,
+		       br.name AS rule_name
+		FROM budget_alerts ba
+		JOIN projects p    ON p.id  = ba.project_id
+		JOIN budget_rules br ON br.id = ba.rule_id
+		ORDER BY ba.triggered_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("budget_store list_recent_alerts: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*domain.RecentBudgetAlert
+	for rows.Next() {
+		a := &domain.RecentBudgetAlert{}
+		if err := rows.Scan(
+			&a.ID, &a.RuleID, &a.ProjectID, &a.RunID,
+			&a.TriggeredAt, &a.CurrentCost, &a.ThresholdUSD, &a.ActionTaken,
+			&a.ProjectName, &a.RuleName,
+		); err != nil {
+			return nil, fmt.Errorf("budget_store recent alert scan: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func (s *BudgetStore) ListAlerts(ctx context.Context, projectID string, limit int) ([]*domain.BudgetAlert, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, rule_id, project_id, run_id,

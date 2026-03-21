@@ -1,4 +1,4 @@
-import type { Project, Run, Span, Topology, BudgetRule, BudgetAlert } from "./types";
+import type { Project, Run, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
@@ -47,12 +47,25 @@ export const budgetApi = {
   createRule: (projectId: string, rule: Omit<BudgetRule, "ID" | "ProjectID" | "CreatedAt" | "UpdatedAt">) =>
     apiFetch<BudgetRule>(`/api/v1/projects/${projectId}/budget/rules`, {
       method: "POST",
-      body: JSON.stringify(rule),
+      body: JSON.stringify({
+        name: rule.Name,
+        threshold_usd: rule.ThresholdUSD,
+        action: rule.Action,
+        scope: rule.Scope,
+        webhook_url: rule.WebhookURL ?? null,
+        enabled: rule.Enabled,
+      }),
     }),
-  updateRule: (projectId: string, ruleId: string, data: { Enabled?: boolean; Name?: string; ThresholdUSD?: number; Action?: string }) =>
+  updateRule: (projectId: string, ruleId: string, data: { Enabled?: boolean; Name?: string; ThresholdUSD?: number; Action?: string; Scope?: string }) =>
     apiFetch<BudgetRule>(`/api/v1/projects/${projectId}/budget/rules/${ruleId}`, {
       method: "PUT",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        name: data.Name,
+        threshold_usd: data.ThresholdUSD,
+        action: data.Action,
+        scope: data.Scope,
+        enabled: data.Enabled,
+      }),
     }),
   deleteRule: (projectId: string, ruleId: string) =>
     apiFetch<{ deleted: string }>(
@@ -63,4 +76,6 @@ export const budgetApi = {
     apiFetch<BudgetAlert[]>(
       `/api/v1/projects/${projectId}/budget/alerts?limit=${limit}`
     ),
+  listRecentAlerts: (limit = 20) =>
+    apiFetch<RecentBudgetAlert[]>(`/api/v1/budget/alerts/recent?limit=${limit}`),
 };

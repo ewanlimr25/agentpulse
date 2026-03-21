@@ -15,6 +15,8 @@ export interface Toast {
   title: string;
   message: string;
   variant: ToastVariant;
+  href?: string;
+  isExiting?: boolean;
 }
 
 interface ToastContextValue {
@@ -31,7 +33,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, isExiting: true } : t))
+    );
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 200);
   }, []);
 
   const addToast = useCallback(

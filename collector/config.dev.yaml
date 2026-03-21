@@ -22,7 +22,7 @@ processors:
     pricing_config: ../config/model_pricing.yaml
   budgetenforceproc:
     postgres_dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
-    rule_refresh_interval: 30s
+    rule_refresh_interval: 3s
     webhook_timeout: 5s
 
 exporters:

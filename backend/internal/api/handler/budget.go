@@ -30,6 +30,17 @@ func (h *BudgetHandler) Routes(r chi.Router) {
 	r.Get("/alerts", h.listAlerts)
 }
 
+// ListRecent is mounted at GET /api/v1/budget/alerts/recent (no project scope).
+func (h *BudgetHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
+	limit := intQueryParam(r, "limit", 20)
+	alerts, err := h.budget.ListRecentAlerts(r.Context(), limit)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to list recent alerts")
+		return
+	}
+	httputil.JSON(w, http.StatusOK, alerts)
+}
+
 func (h *BudgetHandler) listRules(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	rules, err := h.budget.ListRules(r.Context(), projectID)
