@@ -8,6 +8,7 @@ import { Navbar } from "@/components/Navbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import type { Run } from "@/lib/types";
+import { RunCharts } from "@/components/charts/RunCharts";
 
 function formatDuration(ms: number) {
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
@@ -88,6 +89,9 @@ export default function ProjectPage({
           <MetricCard label="Total Tokens" value={totalTokens.toLocaleString()} />
           <MetricCard label="Error Rate" value={`${errorRate}%`} />
         </div>
+
+        <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
+        <RunCharts runs={runs} />
 
         <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
 

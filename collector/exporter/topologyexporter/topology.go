@@ -143,6 +143,14 @@ func spanToNode(s *enrichedSpan) (topologyNode, bool) {
 
 	tokenCount := int(s.InputTokens) + int(s.OutputTokens)
 
+	meta := map[string]any{}
+	if s.ModelID != "" {
+		meta["model_id"] = s.ModelID
+	}
+	if s.AgentName != "" {
+		meta["agent_name"] = s.AgentName
+	}
+
 	node := topologyNode{
 		SpanID:     s.SpanID,
 		RunID:      s.RunID,
@@ -152,7 +160,7 @@ func spanToNode(s *enrichedSpan) (topologyNode, bool) {
 		Status:     statusFromCode(s.StatusCode),
 		CostUSD:    s.CostUSD,
 		TokenCount: tokenCount,
-		Metadata:   map[string]any{},
+		Metadata:   meta,
 	}
 
 	if !s.StartTime.IsZero() {
@@ -172,16 +180,22 @@ func spanToNode(s *enrichedSpan) (topologyNode, bool) {
 func classifyNode(s *enrichedSpan) (nodeType, nodeName string, ok bool) {
 	switch s.AgentSpanKind {
 	case "llm.call":
-		name := s.ModelID
+		// Prefer agent name — it answers "who is making this call?"
+		// Fall back to model ID, then span name.
+		name := s.AgentName
+		if name == "" {
+			name = s.ModelID
+		}
 		if name == "" {
 			name = s.SpanName
 		}
 		return nodeTypeLLM, name, true
 
 	case "tool.call":
+		// Prefer explicit tool name; strip "tool/" prefix from span names.
 		name := s.ToolName
 		if name == "" {
-			name = s.SpanName
+			name = stripToolPrefix(s.SpanName)
 		}
 		return nodeTypeTool, name, true
 
@@ -196,12 +210,19 @@ func classifyNode(s *enrichedSpan) (nodeType, nodeName string, ok bool) {
 		return nodeTypeMemory, "memory", true
 
 	default:
-		// Unknown kind: include only if the span carries an explicit agent name.
 		if s.AgentName != "" {
 			return nodeTypeAgent, s.AgentName, true
 		}
 		return "", "", false
 	}
+}
+
+// stripToolPrefix removes a leading "tool/" from span names.
+func stripToolPrefix(name string) string {
+	if len(name) > 5 && name[:5] == "tool/" {
+		return name[5:]
+	}
+	return name
 }
 
 // edgeTypeForKind maps a child span's agent_span_kind to a topology edge type.

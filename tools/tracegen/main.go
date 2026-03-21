@@ -26,17 +26,13 @@ import (
 
 func main() {
 	endpoint := flag.String("endpoint", "localhost:4317", "OTLP gRPC endpoint")
+	apiBase := flag.String("api", "http://localhost:8080", "Backend API base URL (used with --demo)")
 	runs := flag.Int("runs", 3, "Number of trace runs to emit")
 	scenarioName := flag.String("scenario", "multi-agent-research", "Scenario to run: multi-agent-research | simple-llm | parallel-tools | all")
 	projectID := flag.String("project-id", "demo-project", "Project ID embedded in spans")
-	delay := flag.Duration("delay", 500*time.Millisecond, "Delay between runs")
+	delay := flag.Duration("delay", 300*time.Millisecond, "Delay between runs")
+	demo := flag.Bool("demo", false, "Create realistic demo projects via the API and seed each with themed runs")
 	flag.Parse()
-
-	scenariosToRun, err := resolveScenarios(*scenarioName)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
 
 	ctx := context.Background()
 
@@ -53,6 +49,20 @@ func main() {
 	}()
 
 	tracer := otel.Tracer("tracegen")
+
+	if *demo {
+		if err := runDemo(ctx, tracer, *apiBase, *endpoint, *delay); err != nil {
+			log.Fatalf("demo seed: %v", err)
+		}
+		log.Printf("done — demo projects created and seeded")
+		return
+	}
+
+	scenariosToRun, err := resolveScenarios(*scenarioName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	total := 0
 	for i := 0; i < *runs; i++ {

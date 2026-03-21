@@ -44,13 +44,14 @@ func (s *SpanStore) ListByRun(ctx context.Context, runID string) ([]*domain.Span
 	for rows.Next() {
 		sp := &domain.Span{}
 		var startTime, endTime time.Time
+		var agentSpanKind, statusCode string
 		var attrs, resourceAttrs map[string]string
 
 		if err := rows.Scan(
 			&sp.TraceID, &sp.SpanID, &sp.ParentSpanID,
 			&sp.RunID, &sp.ProjectID,
-			&sp.AgentSpanKind, &sp.AgentName, &sp.ModelID,
-			&sp.SpanName, &sp.ServiceName, &sp.StatusCode, &sp.StatusMessage,
+			&agentSpanKind, &sp.AgentName, &sp.ModelID,
+			&sp.SpanName, &sp.ServiceName, &statusCode, &sp.StatusMessage,
 			&startTime, &endTime, &sp.DurationNS,
 			&sp.InputTokens, &sp.OutputTokens, &sp.TotalTokens, &sp.CostUSD,
 			&attrs, &resourceAttrs,
@@ -58,6 +59,8 @@ func (s *SpanStore) ListByRun(ctx context.Context, runID string) ([]*domain.Span
 			return nil, fmt.Errorf("span_store scan: %w", err)
 		}
 
+		sp.AgentSpanKind = domain.AgentSpanKind(agentSpanKind)
+		sp.StatusCode = domain.StatusCode(statusCode)
 		sp.StartTime = startTime.UTC()
 		sp.EndTime = endTime.UTC()
 		sp.Attributes = attrs

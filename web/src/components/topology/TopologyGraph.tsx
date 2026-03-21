@@ -38,6 +38,7 @@ export function TopologyGraph({ topology }: Props) {
         status: n.Status,
         costUSD: n.CostUSD,
         tokenCount: n.TokenCount,
+        metadata: n.Metadata as Record<string, string>,
       },
     }));
 

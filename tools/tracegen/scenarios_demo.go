@@ -1,0 +1,548 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+func randTokens(minInput, maxInput, minOutput, maxOutput int) (int, int) {
+	input := minInput + rand.Intn(maxInput-minInput)
+	output := minOutput + rand.Intn(maxOutput-minOutput)
+	return input, output
+}
+
+func baseAttrs(projectID, runID, agentName string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.project.id", projectID),
+		attribute.String("agentpulse.run.id", runID),
+		attribute.String("agentpulse.agent.name", agentName),
+	}
+}
+
+func withLLM(model, system string, inputTokens, outputTokens int) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "llm.call"),
+		attribute.String("gen_ai.operation.name", "chat"),
+		attribute.String("gen_ai.system", system),
+		attribute.String("gen_ai.request.model", model),
+		attribute.Int("gen_ai.usage.input_tokens", inputTokens),
+		attribute.Int("gen_ai.usage.output_tokens", outputTokens),
+	}
+}
+
+func withTool(name string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "tool.call"),
+		attribute.String("agentpulse.tool.name", name),
+	}
+}
+
+func withHandoff(from, to string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "agent.handoff"),
+		attribute.String("agentpulse.agent.name", from),
+		attribute.String("agentpulse.handoff.target", to),
+	}
+}
+
+func withMemRead(key string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "memory.read"),
+		attribute.String("agentpulse.memory.key", key),
+	}
+}
+
+func withMemWrite(key string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "memory.write"),
+		attribute.String("agentpulse.memory.key", key),
+	}
+}
+
+func combine(slices ...[]attribute.KeyValue) []attribute.KeyValue {
+	var out []attribute.KeyValue
+	for _, s := range slices {
+		out = append(out, s...)
+	}
+	return out
+}
+
+func jitterD(base time.Duration) time.Duration {
+	return base + time.Duration(rand.Int63n(int64(base/3)+1))
+}
+
+// ── Scenario: support-triage ─────────────────────────────────────────────────
+//
+// triage-agent (classify intent)
+//   ├─ tool: fetch_customer_profile
+//   ├─ llm:  classify intent  (haiku — cheap + fast)
+//   ├─ handoff → kb-agent
+//   │     ├─ tool: search_knowledge_base
+//   │     └─ llm:  draft response  (sonnet)
+//   └─ llm: compose final reply
+
+func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+
+	rootCtx, root := tracer.Start(ctx, "triage-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"),
+			withLLM("claude-haiku-4-5", "anthropic", rv(200, 600), rv(50, 150)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_customer_profile",
+		combine(baseAttrs(projectID, runID, "triage-agent"), withTool("fetch_customer_profile"))...,
+	)(jitterD(30*time.Millisecond))
+
+	span(tracer, rootCtx, "triage-agent/classify",
+		combine(baseAttrs(projectID, runID, "triage-agent"),
+			withLLM("claude-haiku-4-5", "anthropic", rv(400, 800), rv(80, 160)))...,
+	)(jitterD(120*time.Millisecond))
+
+	kbCtx, kbHandoff := tracer.Start(rootCtx, "handoff/kb-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"),
+			withHandoff("triage-agent", "kb-agent"),
+		)...),
+	)
+
+	span(tracer, kbCtx, "tool/search_knowledge_base",
+		combine(baseAttrs(projectID, runID, "kb-agent"), withTool("search_knowledge_base"))...,
+	)(jitterD(80*time.Millisecond))
+
+	in, out := randTokens(600, 1800, 200, 600)
+	span(tracer, kbCtx, "kb-agent/draft-response",
+		combine(baseAttrs(projectID, runID, "kb-agent"),
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(300*time.Millisecond))
+
+	kbHandoff.End()
+
+	in, out = randTokens(500, 1200, 150, 400)
+	span(tracer, rootCtx, "triage-agent/compose-reply",
+		combine(baseAttrs(projectID, runID, "triage-agent"),
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(250*time.Millisecond))
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
+}
+
+// ── Scenario: support-escalation ─────────────────────────────────────────────
+//
+// Like triage but the kb-agent fails to find an answer → escalation-agent
+// creates a ticket. Occasionally errors.
+
+func scenarioSupportEscalation(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	shouldFail := rand.Intn(5) == 0 // 20% error rate
+
+	rootCtx, root := tracer.Start(ctx, "triage-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"),
+			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(60, 120)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_customer_profile",
+		combine(baseAttrs(projectID, runID, "triage-agent"), withTool("fetch_customer_profile"))...,
+	)(jitterD(25*time.Millisecond))
+
+	span(tracer, rootCtx, "triage-agent/classify",
+		combine(baseAttrs(projectID, runID, "triage-agent"),
+			withLLM("claude-haiku-4-5", "anthropic", rv(400, 900), rv(80, 180)))...,
+	)(jitterD(100*time.Millisecond))
+
+	// kb-agent — can't resolve, triggers escalation
+	kbCtx, kbHandoff := tracer.Start(rootCtx, "handoff/kb-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"),
+			withHandoff("triage-agent", "kb-agent"),
+		)...),
+	)
+	span(tracer, kbCtx, "tool/search_knowledge_base",
+		combine(baseAttrs(projectID, runID, "kb-agent"), withTool("search_knowledge_base"))...,
+	)(jitterD(90*time.Millisecond))
+	span(tracer, kbCtx, "kb-agent/no-match",
+		combine(baseAttrs(projectID, runID, "kb-agent"),
+			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(40, 80)))...,
+	)(jitterD(100*time.Millisecond))
+	kbHandoff.End()
+
+	// escalation-agent
+	escCtx, escHandoff := tracer.Start(rootCtx, "handoff/escalation-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"),
+			withHandoff("triage-agent", "escalation-agent"),
+		)...),
+	)
+
+	span(tracer, escCtx, "tool/fetch_case_history",
+		combine(baseAttrs(projectID, runID, "escalation-agent"), withTool("fetch_case_history"))...,
+	)(jitterD(40*time.Millisecond))
+
+	_, ticketSpan := tracer.Start(escCtx, "tool/create_ticket",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "escalation-agent"),
+			withTool("create_ticket"),
+		)...),
+	)
+	time.Sleep(jitterD(60 * time.Millisecond))
+	if shouldFail {
+		ticketSpan.SetStatus(codes.Error, "ticket service timeout")
+	}
+	ticketSpan.End()
+
+	escHandoff.End()
+
+	if shouldFail {
+		root.SetStatus(codes.Error, "escalation failed — ticket service unavailable")
+	} else {
+		root.SetStatus(codes.Ok, "")
+	}
+	root.End()
+	return nil
+}
+
+// ── Scenario: deep-research ──────────────────────────────────────────────────
+//
+// orchestrator
+//   ├─ memory.read (prior research context)
+//   ├─ handoff → web-researcher
+//   │     ├─ tool: web_search ×3
+//   │     ├─ tool: arxiv_search
+//   │     └─ llm: synthesize sources
+//   ├─ memory.write (synthesis cache)
+//   ├─ handoff → fact-checker
+//   │     ├─ tool: verify_claim ×2
+//   │     └─ llm: assess credibility
+//   └─ llm: write final report
+
+func scenarioDeepResearch(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+
+	rootCtx, root := tracer.Start(ctx, "orchestrator",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "orchestrator"),
+			withLLM("gpt-4o", "openai", rv(800, 1500), rv(200, 400)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "memory.read/prior-research",
+		combine(baseAttrs(projectID, runID, "orchestrator"), withMemRead("research_context"))...,
+	)(jitterD(15*time.Millisecond))
+
+	// web-researcher
+	resCtx, resHandoff := tracer.Start(rootCtx, "handoff/web-researcher",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "orchestrator"),
+			withHandoff("orchestrator", "web-researcher"),
+		)...),
+	)
+	for i := range 3 {
+		span(tracer, resCtx, fmt.Sprintf("tool/web_search_%d", i+1),
+			combine(baseAttrs(projectID, runID, "web-researcher"), withTool("web_search"))...,
+		)(jitterD(120*time.Millisecond))
+	}
+	span(tracer, resCtx, "tool/arxiv_search",
+		combine(baseAttrs(projectID, runID, "web-researcher"), withTool("arxiv_search"))...,
+	)(jitterD(200*time.Millisecond))
+	in, out := randTokens(3000, 6000, 600, 1200)
+	span(tracer, resCtx, "web-researcher/synthesize",
+		combine(baseAttrs(projectID, runID, "web-researcher"),
+			withLLM("gpt-4o-mini", "openai", in, out))...,
+	)(jitterD(500*time.Millisecond))
+	resHandoff.End()
+
+	span(tracer, rootCtx, "memory.write/synthesis-cache",
+		combine(baseAttrs(projectID, runID, "orchestrator"), withMemWrite("synthesis_cache"))...,
+	)(jitterD(10*time.Millisecond))
+
+	// fact-checker
+	fcCtx, fcHandoff := tracer.Start(rootCtx, "handoff/fact-checker",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "orchestrator"),
+			withHandoff("orchestrator", "fact-checker"),
+		)...),
+	)
+	span(tracer, fcCtx, "memory.read/synthesis-cache",
+		combine(baseAttrs(projectID, runID, "fact-checker"), withMemRead("synthesis_cache"))...,
+	)(jitterD(12*time.Millisecond))
+	for _, claim := range []string{"claim_1", "claim_2"} {
+		span(tracer, fcCtx, "tool/verify_"+claim,
+			combine(baseAttrs(projectID, runID, "fact-checker"), withTool("verify_claim"))...,
+		)(jitterD(150*time.Millisecond))
+	}
+	in, out = randTokens(2000, 4000, 300, 700)
+	span(tracer, fcCtx, "fact-checker/assess-credibility",
+		combine(baseAttrs(projectID, runID, "fact-checker"),
+			withLLM("gpt-4o", "openai", in, out))...,
+	)(jitterD(400*time.Millisecond))
+	fcHandoff.End()
+
+	in, out = randTokens(5000, 10000, 800, 2000)
+	span(tracer, rootCtx, "orchestrator/write-report",
+		combine(baseAttrs(projectID, runID, "orchestrator"),
+			withLLM("gpt-4o", "openai", in, out))...,
+	)(jitterD(800*time.Millisecond))
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
+}
+
+// ── Scenario: fact-check ─────────────────────────────────────────────────────
+
+func scenarioFactCheck(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	shouldFail := rand.Intn(10) == 0
+
+	rootCtx, root := tracer.Start(ctx, "fact-checker",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "fact-checker"),
+			withLLM("gpt-4o", "openai", rv(600, 1200), rv(100, 300)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "memory.read/claim-store",
+		combine(baseAttrs(projectID, runID, "fact-checker"), withMemRead("claim_store"))...,
+	)(jitterD(10*time.Millisecond))
+
+	for _, src := range []string{"primary_source", "secondary_source", "reference_db"} {
+		span(tracer, rootCtx, "tool/search_"+src,
+			combine(baseAttrs(projectID, runID, "fact-checker"), withTool("search_source"))...,
+		)(jitterD(100*time.Millisecond))
+	}
+
+	_, verdictSpan := tracer.Start(rootCtx, "fact-checker/verdict",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "fact-checker"),
+			withLLM("gpt-4o", "openai", rv(2000, 5000), rv(300, 600)),
+		)...),
+	)
+	time.Sleep(jitterD(400 * time.Millisecond))
+	if shouldFail {
+		verdictSpan.SetStatus(codes.Error, "contradictory sources — unable to determine verdict")
+	} else {
+		verdictSpan.SetStatus(codes.Ok, "")
+	}
+	verdictSpan.End()
+
+	span(tracer, rootCtx, "memory.write/verdict-cache",
+		combine(baseAttrs(projectID, runID, "fact-checker"), withMemWrite("verdict_cache"))...,
+	)(jitterD(10*time.Millisecond))
+
+	if shouldFail {
+		root.SetStatus(codes.Error, "fact-check inconclusive")
+	} else {
+		root.SetStatus(codes.Ok, "")
+	}
+	root.End()
+	return nil
+}
+
+// ── Scenario: pr-review ──────────────────────────────────────────────────────
+//
+// review-orchestrator
+//   ├─ tool: fetch_pr_diff
+//   ├─ handoff → security-scanner
+//   │     ├─ tool: run_semgrep
+//   │     └─ llm: triage findings
+//   ├─ handoff → style-checker
+//   │     ├─ tool: run_linter
+//   │     └─ llm: suggest improvements
+//   └─ llm: write review summary
+
+func scenarioPRReview(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	shouldFail := rand.Intn(7) == 0 // ~15% error
+
+	rootCtx, root := tracer.Start(ctx, "review-orchestrator",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "review-orchestrator"),
+			withLLM("claude-sonnet-4-6", "anthropic", rv(400, 800), rv(100, 200)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_pr_diff",
+		combine(baseAttrs(projectID, runID, "review-orchestrator"), withTool("fetch_pr_diff"))...,
+	)(jitterD(50*time.Millisecond))
+
+	// security scanner
+	secCtx, secHandoff := tracer.Start(rootCtx, "handoff/security-scanner",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "review-orchestrator"),
+			withHandoff("review-orchestrator", "security-scanner"),
+		)...),
+	)
+	span(tracer, secCtx, "tool/run_semgrep",
+		combine(baseAttrs(projectID, runID, "security-scanner"), withTool("run_semgrep"))...,
+	)(jitterD(300*time.Millisecond))
+	in, out := randTokens(1500, 3000, 200, 500)
+	span(tracer, secCtx, "security-scanner/triage-findings",
+		combine(baseAttrs(projectID, runID, "security-scanner"),
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(350*time.Millisecond))
+	secHandoff.End()
+
+	// style checker
+	styleCtx, styleHandoff := tracer.Start(rootCtx, "handoff/style-checker",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "review-orchestrator"),
+			withHandoff("review-orchestrator", "style-checker"),
+		)...),
+	)
+	span(tracer, styleCtx, "tool/run_linter",
+		combine(baseAttrs(projectID, runID, "style-checker"), withTool("run_linter"))...,
+	)(jitterD(200*time.Millisecond))
+	in, out = randTokens(2000, 4000, 300, 700)
+	span(tracer, styleCtx, "style-checker/suggest-improvements",
+		combine(baseAttrs(projectID, runID, "style-checker"),
+			withLLM("claude-haiku-4-5", "anthropic", in, out))...,
+	)(jitterD(280*time.Millisecond))
+	styleHandoff.End()
+
+	// final review summary
+	_, summarySpan := tracer.Start(rootCtx, "review-orchestrator/write-summary",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "review-orchestrator"),
+			withLLM("claude-sonnet-4-6", "anthropic", rv(3000, 6000), rv(500, 1000)),
+		)...),
+	)
+	time.Sleep(jitterD(400 * time.Millisecond))
+	if shouldFail {
+		summarySpan.SetStatus(codes.Error, "conflicting signals from security and style agents")
+	} else {
+		summarySpan.SetStatus(codes.Ok, "")
+	}
+	summarySpan.End()
+
+	if shouldFail {
+		root.SetStatus(codes.Error, "review failed")
+	} else {
+		root.SetStatus(codes.Ok, "")
+	}
+	root.End()
+	return nil
+}
+
+// ── Scenario: security-scan ──────────────────────────────────────────────────
+
+func scenarioSecurityScan(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+
+	rootCtx, root := tracer.Start(ctx, "security-scanner",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "security-scanner"),
+			withLLM("claude-sonnet-4-6", "anthropic", rv(500, 1000), rv(100, 250)),
+		)...),
+	)
+
+	for _, tool := range []string{"run_semgrep", "run_bandit", "check_dependencies"} {
+		span(tracer, rootCtx, "tool/"+tool,
+			combine(baseAttrs(projectID, runID, "security-scanner"), withTool(tool))...,
+		)(jitterD(150*time.Millisecond))
+	}
+
+	in, out := randTokens(2000, 5000, 400, 900)
+	span(tracer, rootCtx, "security-scanner/prioritize-findings",
+		combine(baseAttrs(projectID, runID, "security-scanner"),
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(450*time.Millisecond))
+
+	span(tracer, rootCtx, "memory.write/scan-results",
+		combine(baseAttrs(projectID, runID, "security-scanner"), withMemWrite("scan_results"))...,
+	)(jitterD(10*time.Millisecond))
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
+}
+
+// ── Scenario: pipeline-health ─────────────────────────────────────────────────
+//
+// monitor-agent checks data pipeline health, high error rate simulates
+// real-world flakiness in data infrastructure.
+
+func scenarioPipelineHealth(ctx context.Context, tracer trace.Tracer, projectID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	shouldFail := rand.Intn(4) == 0 // 25% error rate
+
+	rootCtx, root := tracer.Start(ctx, "monitor-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "monitor-agent"),
+			withLLM("gpt-4o-mini", "openai", rv(200, 500), rv(50, 150)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/query_pipeline_status",
+		combine(baseAttrs(projectID, runID, "monitor-agent"), withTool("query_pipeline_status"))...,
+	)(jitterD(80*time.Millisecond))
+
+	span(tracer, rootCtx, "tool/check_data_quality",
+		combine(baseAttrs(projectID, runID, "monitor-agent"), withTool("check_data_quality"))...,
+	)(jitterD(120*time.Millisecond))
+
+	span(tracer, rootCtx, "tool/fetch_error_logs",
+		combine(baseAttrs(projectID, runID, "monitor-agent"), withTool("fetch_error_logs"))...,
+	)(jitterD(60*time.Millisecond))
+
+	_, diagSpan := tracer.Start(rootCtx, "monitor-agent/diagnose",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "monitor-agent"),
+			withLLM("gpt-4o-mini", "openai", rv(1000, 2500), rv(150, 400)),
+		)...),
+	)
+	time.Sleep(jitterD(200 * time.Millisecond))
+	if shouldFail {
+		diagSpan.SetStatus(codes.Error, "anomaly detected — downstream lag exceeded threshold")
+	} else {
+		diagSpan.SetStatus(codes.Ok, "")
+	}
+	diagSpan.End()
+
+	if shouldFail {
+		// alert path
+		_, alertHandoff := tracer.Start(rootCtx, "handoff/alert-agent",
+			trace.WithAttributes(combine(
+				baseAttrs(projectID, runID, "monitor-agent"),
+				withHandoff("monitor-agent", "alert-agent"),
+			)...),
+		)
+		span(tracer, rootCtx, "tool/send_pagerduty_alert",
+			combine(baseAttrs(projectID, runID, "alert-agent"), withTool("send_pagerduty_alert"))...,
+		)(jitterD(40*time.Millisecond))
+		alertHandoff.End()
+		root.SetStatus(codes.Error, "pipeline degraded")
+	} else {
+		root.SetStatus(codes.Ok, "")
+	}
+	root.End()
+	return nil
+}
+
+// ── span helper ──────────────────────────────────────────────────────────────
+
+// span starts a span with attrs and returns a func(duration) that sleeps then ends it.
+func span(tracer trace.Tracer, ctx context.Context, name string, attrs ...attribute.KeyValue) func(time.Duration) {
+	_, s := tracer.Start(ctx, name, trace.WithAttributes(attrs...))
+	return func(d time.Duration) {
+		time.Sleep(d)
+		s.End()
+	}
+}
+
+// rv returns a random int in [min, max).
+func rv(min, max int) int {
+	return min + rand.Intn(max-min)
+}

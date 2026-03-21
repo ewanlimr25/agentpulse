@@ -64,11 +64,17 @@ func (e *tracesExporter) ConsumeTraces(_ context.Context, td ptrace.Traces) erro
 	e.mu.Lock()
 	for i := range td.ResourceSpans().Len() {
 		rs := td.ResourceSpans().At(i)
-		projectID := strAttr(rs.Resource().Attributes(), "agentpulse.project_id")
+		// project_id may be a resource attribute or a span attribute (set by agentsemanticproc)
+		resourceProjectID := strAttr(rs.Resource().Attributes(), "agentpulse.project_id")
 		for j := range rs.ScopeSpans().Len() {
 			ss := rs.ScopeSpans().At(j)
 			for k := range ss.Spans().Len() {
-				e.buf = append(e.buf, spanRowFromOTel(ss.Spans().At(k), rs.Resource(), projectID))
+				span := ss.Spans().At(k)
+				projectID := resourceProjectID
+				if pid := strAttr(span.Attributes(), "agentpulse.project_id"); pid != "" {
+					projectID = pid
+				}
+				e.buf = append(e.buf, spanRowFromOTel(span, rs.Resource(), projectID))
 			}
 		}
 	}

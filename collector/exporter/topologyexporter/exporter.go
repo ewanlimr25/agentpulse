@@ -69,13 +69,16 @@ func extractSpans(td ptrace.Traces) []enrichedSpan {
 	var out []enrichedSpan
 	for i := range td.ResourceSpans().Len() {
 		rs := td.ResourceSpans().At(i)
-		projectID := strAttr(rs.Resource().Attributes(), "agentpulse.project_id")
+		resourceProjectID := firstNonEmpty(
+			strAttr(rs.Resource().Attributes(), "agentpulse.project_id"),
+			strAttr(rs.Resource().Attributes(), "agentpulse.project.id"),
+		)
 
 		for j := range rs.ScopeSpans().Len() {
 			ss := rs.ScopeSpans().At(j)
 			for k := range ss.Spans().Len() {
 				span := ss.Spans().At(k)
-				out = append(out, spanToEnriched(span, rs.Resource(), projectID))
+				out = append(out, spanToEnriched(span, rs.Resource(), resourceProjectID))
 			}
 		}
 	}
@@ -85,20 +88,21 @@ func extractSpans(td ptrace.Traces) []enrichedSpan {
 // spanToEnriched maps an OTel span to the enrichedSpan type used by inference.
 func spanToEnriched(span ptrace.Span, resource pcommon.Resource, projectID string) enrichedSpan {
 	attrs := span.Attributes()
-	resourceAttrs := resource.Attributes()
 
-	// project_id can come from resource attributes (takes precedence).
-	if pid := strAttr(resourceAttrs, "agentpulse.project_id"); pid != "" {
-		projectID = pid
-	}
+	// project_id: prefer span attribute (written by agentsemanticproc), fall back to resource
+	projectID = firstNonEmpty(
+		strAttr(attrs, "agentpulse.project_id"),
+		strAttr(attrs, "agentpulse.project.id"),
+		projectID,
+	)
 
 	return enrichedSpan{
 		SpanID:        span.SpanID().String(),
 		ParentSpanID:  span.ParentSpanID().String(),
 		SpanName:      span.Name(),
-		RunID:         strAttr(attrs, "agentpulse.run_id"),
+		RunID:         firstNonEmpty(strAttr(attrs, "agentpulse.run_id"), strAttr(attrs, "agentpulse.run.id")),
 		ProjectID:     projectID,
-		AgentSpanKind: strAttr(attrs, "agentpulse.span_kind"),
+		AgentSpanKind: firstNonEmpty(strAttr(attrs, "agentpulse.span_kind"), strAttr(attrs, "agentpulse.span.kind")),
 		AgentName:     strAttr(attrs, "agentpulse.agent.name"),
 		ModelID:       strAttr(attrs, "agentpulse.model_id"),
 		ToolName:      strAttr(attrs, "tool.name"),
@@ -111,10 +115,22 @@ func spanToEnriched(span ptrace.Span, resource pcommon.Resource, projectID strin
 	}
 }
 
-// groupByProject partitions spans by project_id.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// groupByProject partitions spans by project_id, dropping spans with no project_id.
 func groupByProject(spans []enrichedSpan) map[string][]enrichedSpan {
 	out := make(map[string][]enrichedSpan)
 	for _, s := range spans {
+		if s.ProjectID == "" {
+			continue
+		}
 		out[s.ProjectID] = append(out[s.ProjectID], s)
 	}
 	return out

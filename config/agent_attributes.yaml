@@ -26,6 +26,8 @@ span_kind_detection:
       "memory_write": "memory.write"
 
   # AgentPulse explicit override — set this in your spans for unambiguous classification
+  - attribute: "agentpulse.span.kind"
+    passthrough: true
   - attribute: "agentpulse.span_kind"
     passthrough: true
 
@@ -81,9 +83,14 @@ field_extraction:
     - "memory.key"
 
   run_id:
+    - "agentpulse.run.id"
     - "agentpulse.run_id"
     - "run.id"
     - "trace.run_id"
+
+  project_id:
+    - "agentpulse.project.id"
+    - "agentpulse.project_id"
 
 # ── Cost computation ──────────────────────────────────────────────────────────
 #

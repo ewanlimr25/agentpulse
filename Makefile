@@ -80,8 +80,8 @@ test-web: ## Run frontend tests
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
-seed: ## Generate and send synthetic trace data (requires collector running)
-	go run ./tools/tracegen/... --runs 5 --scenario all
+seed: ## Create demo projects via API and seed with realistic multi-agent runs
+	go run ./tools/tracegen/... --demo
 
 # ── Combined ─────────────────────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@ const (
 	attrOutputTokens  = "agentpulse.output_tokens"
 	attrCostUSD       = "agentpulse.cost_usd"
 	attrRunID         = "agentpulse.run_id"
+	attrProjectID     = "agentpulse.project_id"
 )
 
 // semanticProcessor enriches OTel spans with agent semantic fields.
@@ -86,6 +87,11 @@ func (p *semanticProcessor) enrichSpan(span ptrace.Span) {
 	// 6. Propagate run_id if present
 	if runID := p.extractField("run_id", attrs); runID != "" {
 		attrs.PutStr(attrRunID, runID)
+	}
+
+	// 7. Propagate project_id if present
+	if projectID := p.extractField("project_id", attrs); projectID != "" {
+		attrs.PutStr(attrProjectID, projectID)
 	}
 }
 

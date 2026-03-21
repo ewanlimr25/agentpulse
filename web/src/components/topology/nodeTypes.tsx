@@ -9,6 +9,7 @@ interface NodeData {
   status: NodeStatus;
   costUSD: number;
   tokenCount: number;
+  metadata?: Record<string, string>;
 }
 
 const nodeColors: Record<NodeType, { bg: string; border: string; text: string }> = {
@@ -51,6 +52,11 @@ export function AgentNode({ data }: { data: NodeData }) {
       <p className="text-sm font-medium text-[var(--text)] truncate max-w-[180px]">
         {data.label}
       </p>
+      {data.nodeType === "llm" && data.metadata?.model_id && (
+        <p className="text-xs text-[var(--text-muted)] truncate max-w-[180px] mt-0.5">
+          {data.metadata.model_id}
+        </p>
+      )}
 
       <div className="mt-2 flex gap-3 text-xs text-[var(--text-muted)]">
         {data.costUSD > 0 && (
