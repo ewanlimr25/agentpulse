@@ -6,12 +6,12 @@ import { SpanDetailContent } from "./SpanDetailContent";
 
 interface Props {
   span: Span | undefined;
-  eval?: SpanEval;
+  evals?: SpanEval[];
   runStartTime: string;
   onClose: () => void;
 }
 
-export function SpanDetailDrawer({ span, eval: spanEval, runStartTime, onClose }: Props) {
+export function SpanDetailDrawer({ span, evals, runStartTime, onClose }: Props) {
   // Close on ESC
   useEffect(() => {
     if (!span) return;
@@ -53,7 +53,7 @@ export function SpanDetailDrawer({ span, eval: spanEval, runStartTime, onClose }
           </button>
         </div>
 
-        <SpanDetailContent span={span} eval={spanEval} runStartTime={runStartTime} />
+        <SpanDetailContent span={span} evals={evals} runStartTime={runStartTime} />
       </div>
     </>
   );

@@ -5,7 +5,7 @@ import { formatDurationNS } from "@/lib/format";
 
 interface Props {
   span: Span;
-  eval?: SpanEval;
+  evals?: SpanEval[];
   runStartTime: string;
 }
 
@@ -68,7 +68,7 @@ function groupAttributes(attrs: Record<string, string>): [string, [string, strin
   return sorted;
 }
 
-export function SpanDetailContent({ span, eval: spanEval, runStartTime }: Props) {
+export function SpanDetailContent({ span, evals, runStartTime }: Props) {
   const runStart = new Date(runStartTime).getTime();
   const spanStart = new Date(span.StartTime).getTime();
   const offsetMS = spanStart - runStart;
@@ -127,24 +127,30 @@ export function SpanDetailContent({ span, eval: spanEval, runStartTime }: Props)
         </div>
       </div>
 
-      {/* Quality Score */}
-      {spanEval && (
+      {/* Quality Scores — one card per eval type */}
+      {evals && evals.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Quality Score</p>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-3">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono tabular-nums ${evalScoreClasses(spanEval.Score)}`}>
-                <span>●</span>
-                <span>{spanEval.Score.toFixed(2)}</span>
-              </span>
-              <span className="text-xs text-[var(--text-muted)] capitalize">{spanEval.EvalName}</span>
-            </div>
-            {spanEval.Reasoning && (
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">{spanEval.Reasoning}</p>
-            )}
-            <p className="text-xs text-[var(--text-muted)]">
-              judge: <span className="font-mono text-[var(--text)]">{spanEval.JudgeModel}</span>
-            </p>
+          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+            {evals.length === 1 ? "Quality Score" : "Quality Scores"}
+          </p>
+          <div className="flex flex-col gap-3">
+            {evals.map((spanEval) => (
+              <div key={spanEval.EvalName} className={`rounded-lg p-3 ${evalScoreClasses(spanEval.Score)}`}>
+                <div className="flex items-center gap-3 mb-1.5">
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-sm font-mono tabular-nums ${evalScoreClasses(spanEval.Score)}`}>
+                    <span>●</span>
+                    <span>{spanEval.Score.toFixed(2)}</span>
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)] capitalize">{spanEval.EvalName.replace(/_/g, " ")}</span>
+                </div>
+                {spanEval.Reasoning && (
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">{spanEval.Reasoning}</p>
+                )}
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  judge: <span className="font-mono text-[var(--text)]">{spanEval.JudgeModel}</span>
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       )}

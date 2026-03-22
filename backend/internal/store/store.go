@@ -89,6 +89,18 @@ type EvalJobStore interface {
 	MarkFailed(ctx context.Context, id, errMsg string) error
 }
 
+// EvalConfigStore manages per-project eval type configuration in Postgres.
+type EvalConfigStore interface {
+	// List returns all eval configs for a project.
+	List(ctx context.Context, projectID string) ([]*domain.EvalConfig, error)
+	// ListAllEnabled returns all enabled configs across all projects (used by enqueuer).
+	ListAllEnabled(ctx context.Context) ([]*domain.EvalConfig, error)
+	// Upsert creates or updates a config (keyed on project_id, eval_name).
+	Upsert(ctx context.Context, cfg *domain.EvalConfig) error
+	// Delete removes a config by eval_name within a project.
+	Delete(ctx context.Context, projectID, evalName string) error
+}
+
 // LoopStore manages detected agent loops in Postgres.
 type LoopStore interface {
 	Upsert(ctx context.Context, loop *domain.RunLoop) error

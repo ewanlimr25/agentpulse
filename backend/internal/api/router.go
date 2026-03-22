@@ -21,6 +21,7 @@ func NewRouter(
 	topology store.TopologyStore,
 	budget store.BudgetStore,
 	evals store.EvalStore,
+	evalConfigs store.EvalConfigStore,
 	alertRules store.AlertRuleStore,
 	analytics store.AnalyticsStore,
 	loops store.LoopStore,
@@ -43,6 +44,7 @@ func NewRouter(
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals)
+	evalConfigHandler := handler.NewEvalConfigHandler(evalConfigs)
 	alertHandler := handler.NewAlertRuleHandler(alertRules)
 	analyticsHandler := handler.NewAnalyticsHandler(analytics)
 	loopHandler := handler.NewLoopHandler(loops)
@@ -68,6 +70,10 @@ func NewRouter(
 
 			r.Get("/runs", runHandler.List)
 			r.Get("/evals/summary", evalHandler.SummaryByProject)
+
+			r.Route("/evals", func(r chi.Router) {
+				evalConfigHandler.Routes(r)
+			})
 
 			r.Route("/budget", func(r chi.Router) {
 				budgetHandler.Routes(r)

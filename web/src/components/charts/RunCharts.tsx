@@ -6,7 +6,7 @@ import { CostChart } from "./CostChart";
 import { LatencyChart } from "./LatencyChart";
 import { ErrorRateChart } from "./ErrorRateChart";
 import { TokenUsageChart } from "./TokenUsageChart";
-import { QualityChart } from "./QualityChart";
+import { EvalTrendChart } from "@/components/evals/EvalTrendChart";
 
 interface Props {
   runs: Run[];
@@ -30,7 +30,7 @@ export function RunCharts({ runs, evalSummaries }: Props) {
       <LatencyChart runs={sorted} />
       <ErrorRateChart runs={sorted} />
       <TokenUsageChart runs={sorted} />
-      {qualityData.length >= 2 && <QualityChart data={qualityData} />}
+      {qualityData.length >= 2 && <EvalTrendChart data={qualityData} />}
     </div>
   );
 }

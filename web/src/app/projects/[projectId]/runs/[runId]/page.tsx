@@ -19,16 +19,12 @@ function scoreColorClasses(score: number): string {
   return "bg-red-950/40 border border-red-700 text-red-400";
 }
 
-function ScoreBadge({ eval: e }: { eval: SpanEval }) {
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono tabular-nums shrink-0 ${scoreColorClasses(e.Score)}`}>
-      <span>●</span>
-      <span>{e.Score.toFixed(2)}</span>
-    </span>
-  );
-}
 
-function SpanRow({ span, eval: spanEval, onClick }: { span: Span; eval?: SpanEval; onClick: () => void }) {
+function SpanRow({ span, evals, onClick }: { span: Span; evals?: SpanEval[]; onClick: () => void }) {
+  const worstEval = evals && evals.length > 0
+    ? evals.reduce((worst, e) => e.Score < worst.Score ? e : worst)
+    : undefined;
+
   return (
     <div
       onClick={onClick}
@@ -47,7 +43,13 @@ function SpanRow({ span, eval: spanEval, onClick }: { span: Span; eval?: SpanEva
         )}
       </div>
       <div className="flex items-center gap-4 text-xs tabular-nums text-[var(--text-muted)] shrink-0">
-        {spanEval && <ScoreBadge eval={spanEval} />}
+        {worstEval && (
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono tabular-nums shrink-0 ${scoreColorClasses(worstEval.Score)}`}>
+            <span>●</span>
+            <span>{worstEval.Score.toFixed(2)}</span>
+            {evals && evals.length > 1 && <span className="opacity-60 text-[10px]">+{evals.length - 1}</span>}
+          </span>
+        )}
         {span.TotalTokens > 0 && <span>{span.TotalTokens.toLocaleString()} tok</span>}
         {span.CostUSD > 0 && <span>${span.CostUSD.toFixed(5)}</span>}
         <span>{formatDurationNS(span.DurationNS)}</span>
@@ -84,13 +86,15 @@ export default function RunPage({
     queryFn: () => loopsApi.listByRun(runId),
   });
 
-  // Build a map from spanId to the latest eval (for the "relevance" eval_name)
-  const evalsBySpan = new Map<string, SpanEval>(
-    evals?.map((e) => [e.SpanID, e]) ?? []
-  );
+  // Build a map from spanId → all evals for that span (one per eval type).
+  const evalsBySpan = new Map<string, SpanEval[]>();
+  for (const e of evals ?? []) {
+    const existing = evalsBySpan.get(e.SpanID) ?? [];
+    evalsBySpan.set(e.SpanID, [...existing, e]);
+  }
 
   const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
-  const selectedEval = selectedSpanId ? evalsBySpan.get(selectedSpanId) : undefined;
+  const selectedEvals = selectedSpanId ? (evalsBySpan.get(selectedSpanId) ?? []) : [];
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -148,7 +152,7 @@ export default function RunPage({
             <SpanRow
               key={s.SpanID}
               span={s}
-              eval={evalsBySpan.get(s.SpanID)}
+              evals={evalsBySpan.get(s.SpanID)}
               onClick={() => setSelectedSpanId(s.SpanID)}
             />
           ))}
@@ -160,7 +164,7 @@ export default function RunPage({
 
       <SpanDetailDrawer
         span={selectedSpan}
-        eval={selectedEval}
+        evals={selectedEvals}
         runStartTime={run?.StartTime ?? ""}
         onClose={() => setSelectedSpanId(null)}
       />

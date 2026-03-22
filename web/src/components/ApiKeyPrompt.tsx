@@ -10,7 +10,7 @@ interface Props {
   onKeySubmit: (key: string) => Promise<void>;
 }
 
-export function ApiKeyPrompt({ projectId: _projectId, keyError, onKeySubmit }: Props) {
+export function ApiKeyPrompt({ keyError, onKeySubmit }: Props) {
   const [key, setKey] = useState("");
   const [localError, setLocalError] = useState("");
   const [pending, setPending] = useState(false);

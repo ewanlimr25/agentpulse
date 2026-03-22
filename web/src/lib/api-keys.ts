@@ -34,7 +34,9 @@ export function getApiKey(projectId: string): string | null {
 }
 
 export function removeApiKey(projectId: string): void {
-  const { [projectId]: _, ...rest } = loadAll();
+  const rest = Object.fromEntries(
+    Object.entries(loadAll()).filter(([k]) => k !== projectId)
+  );
   saveAll(rest);
 }
 

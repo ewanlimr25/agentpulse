@@ -55,6 +55,7 @@ func main() {
 	evalStore := chstore.NewEvalStore(chConn)
 	analyticsStore := chstore.NewAnalyticsStore(chConn)
 	evalJobStore := pgstore.NewEvalJobStore(pgPool)
+	evalConfigStore := pgstore.NewEvalConfigStore(pgPool)
 	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
 	loopStore := pgstore.NewLoopStore(pgPool)
 
@@ -73,15 +74,16 @@ func main() {
 
 	// ── Eval workers ──────────────────────────────────────────────────────
 	if cfg.AnthropicAPIKey != "" {
-		go eval.NewEnqueuer(chConn, evalJobStore).Run(ctx)
-		go eval.NewWorker(chConn, evalJobStore, evalStore, cfg.AnthropicAPIKey).Run(ctx)
+		registry := eval.NewRegistry(nil) // starts with built-in types; configs are loaded per-tick by enqueuer
+		go eval.NewEnqueuer(chConn, evalJobStore, evalConfigStore).Run(ctx)
+		go eval.NewWorker(chConn, evalJobStore, evalStore, registry, cfg.AnthropicAPIKey).Run(ctx)
 		slog.Info("eval worker started")
 	} else {
 		slog.Info("eval worker disabled (ANTHROPIC_API_KEY not set)")
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, alertRuleStore, analyticsStore, loopStore, hub)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, hub)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { alertsApi } from "@/lib/api";
 import type { AlertRule, SignalType, CompareOp } from "@/lib/types";
@@ -21,36 +21,44 @@ const WINDOW_PRESETS = [
   { label: "24 hours", value: 86400 },
 ];
 
+interface FormState {
+  name: string;
+  signalType: SignalType;
+  threshold: string;
+  compareOp: CompareOp;
+  windowSeconds: number;
+  scopeFilter: string;
+  webhookURL: string;
+  enabled: boolean;
+}
+
+const DEFAULT_FORM: FormState = {
+  name: "", signalType: "error_rate", threshold: "", compareOp: "gt",
+  windowSeconds: 900, scopeFilter: "", webhookURL: "", enabled: true,
+};
+
+function formFromRule(rule: AlertRule): FormState {
+  return {
+    name: rule.Name,
+    signalType: rule.SignalType,
+    threshold: String(rule.Threshold),
+    compareOp: rule.CompareOp,
+    windowSeconds: rule.WindowSeconds,
+    scopeFilter: rule.ScopeFilter ?? "",
+    webhookURL: rule.WebhookURL ?? "",
+    enabled: rule.Enabled,
+  };
+}
+
 export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Props) {
   const qc = useQueryClient();
 
-  const [name, setName] = useState("");
-  const [signalType, setSignalType] = useState<SignalType>("error_rate");
-  const [threshold, setThreshold] = useState("");
-  const [compareOp, setCompareOp] = useState<CompareOp>("gt");
-  const [windowSeconds, setWindowSeconds] = useState(900);
-  const [scopeFilter, setScopeFilter] = useState("");
-  const [webhookURL, setWebhookURL] = useState("");
-  const [enabled, setEnabled] = useState(true);
+  // State is initialized once per mount. The parent must pass an appropriate `key`
+  // prop so this component remounts when editRule or isOpen changes.
+  const [form, setForm] = useState<FormState>(() => editRule ? formFromRule(editRule) : DEFAULT_FORM);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (editRule) {
-      setName(editRule.Name);
-      setSignalType(editRule.SignalType);
-      setThreshold(String(editRule.Threshold));
-      setCompareOp(editRule.CompareOp);
-      setWindowSeconds(editRule.WindowSeconds);
-      setScopeFilter(editRule.ScopeFilter ?? "");
-      setWebhookURL(editRule.WebhookURL ?? "");
-      setEnabled(editRule.Enabled);
-    } else {
-      setName(""); setSignalType("error_rate"); setThreshold("");
-      setCompareOp("gt"); setWindowSeconds(900); setScopeFilter("");
-      setWebhookURL(""); setEnabled(true);
-    }
-    setError("");
-  }, [editRule, isOpen]);
+  const { name, signalType, threshold, compareOp, windowSeconds, scopeFilter, webhookURL, enabled } = form;
 
   const mutation = useMutation({
     mutationFn: (body: Parameters<typeof alertsApi.createRule>[1]) =>
@@ -81,7 +89,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
       window_seconds: windowSeconds,
       scope_filter: scopeFilter.trim() || undefined,
       webhook_url: webhookURL.trim() || undefined,
-      enabled,
+      enabled: form.enabled,
     });
   }
 
@@ -110,7 +118,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               autoFocus
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="High error rate"
               className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
             />
@@ -121,7 +129,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               <label className="block text-xs text-[var(--text-muted)] mb-1">Signal Type</label>
               <select
                 value={signalType}
-                onChange={(e) => { setSignalType(e.target.value as SignalType); setCompareOp(e.target.value === "quality_score" ? "lt" : "gt"); setThreshold(""); }}
+                onChange={(e) => setForm((f) => ({ ...f, signalType: e.target.value as SignalType, compareOp: e.target.value === "quality_score" ? "lt" : "gt", threshold: "" }))}
                 className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
               >
                 {SIGNAL_TYPES.map((s) => (
@@ -134,7 +142,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               <label className="block text-xs text-[var(--text-muted)] mb-1">Direction</label>
               <select
                 value={compareOp}
-                onChange={(e) => setCompareOp(e.target.value as CompareOp)}
+                onChange={(e) => setForm((f) => ({ ...f, compareOp: e.target.value as CompareOp }))}
                 className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
               >
                 <option value="gt">Above threshold (↑)</option>
@@ -154,7 +162,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
                   step="any"
                   min="0"
                   value={threshold}
-                  onChange={(e) => setThreshold(e.target.value)}
+                  onChange={(e) => setForm((f) => ({ ...f, threshold: e.target.value }))}
                   placeholder={signalType === "quality_score" ? "0.6" : "10"}
                   className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500 pr-8"
                 />
@@ -168,7 +176,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               <label className="block text-xs text-[var(--text-muted)] mb-1">Window</label>
               <select
                 value={windowSeconds}
-                onChange={(e) => setWindowSeconds(Number(e.target.value))}
+                onChange={(e) => setForm((f) => ({ ...f, windowSeconds: Number(e.target.value) }))}
                 className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
               >
                 {WINDOW_PRESETS.map((p) => (
@@ -184,7 +192,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               <input
                 type="text"
                 value={scopeFilter}
-                onChange={(e) => setScopeFilter(e.target.value)}
+                onChange={(e) => setForm((f) => ({ ...f, scopeFilter: e.target.value }))}
                 placeholder="web_search"
                 className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] font-mono focus:outline-none focus:border-indigo-500"
               />
@@ -196,7 +204,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
             <input
               type="url"
               value={webhookURL}
-              onChange={(e) => setWebhookURL(e.target.value)}
+              onChange={(e) => setForm((f) => ({ ...f, webhookURL: e.target.value }))}
               placeholder="https://hooks.example.com/..."
               className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
             />
@@ -205,7 +213,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setEnabled(!enabled)}
+              onClick={() => setForm((f) => ({ ...f, enabled: !f.enabled }))}
               className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${enabled ? "bg-indigo-600" : "bg-zinc-600"}`}
             >
               <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${enabled ? "translate-x-4" : "translate-x-1"}`} />

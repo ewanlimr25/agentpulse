@@ -58,10 +58,11 @@ func (s *EvalStore) ListByRun(ctx context.Context, runID string) ([]*domain.Span
 }
 
 const summaryByProjectQuery = `
-SELECT run_id, avg(score) AS avg_score, count() AS span_count
+SELECT run_id, eval_name, avg(score) AS avg_score, count() AS span_count
 FROM span_evals FINAL
 WHERE project_id = ?
-GROUP BY run_id
+GROUP BY run_id, eval_name
+ORDER BY run_id, eval_name
 `
 
 func (s *EvalStore) SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error) {
@@ -74,7 +75,7 @@ func (s *EvalStore) SummaryByProject(ctx context.Context, projectID string) ([]*
 	var summaries []*domain.RunEvalSummary
 	for rows.Next() {
 		s := &domain.RunEvalSummary{}
-		if err := rows.Scan(&s.RunID, &s.AvgScore, &s.SpanCount); err != nil {
+		if err := rows.Scan(&s.RunID, &s.EvalName, &s.AvgScore, &s.SpanCount); err != nil {
 			return nil, fmt.Errorf("eval_store summary scan: %w", err)
 		}
 		summaries = append(summaries, s)

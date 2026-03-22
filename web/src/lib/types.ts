@@ -166,9 +166,25 @@ export interface SpanEval {
 
 export interface RunEvalSummary {
   RunID: string;
+  EvalName: string;   // e.g. "relevance", "hallucination"
   AvgScore: number;   // 0.0 – 1.0
   SpanCount: number;
 }
+
+export interface EvalConfig {
+  ID: string;
+  ProjectID: string;
+  EvalName: string;           // built-in name or "custom:<name>"
+  Enabled: boolean;
+  SpanKind: "llm.call" | "tool.call";
+  PromptTemplate?: string;    // undefined = built-in; present = custom
+  PromptVersion: number;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export const BUILTIN_EVAL_NAMES = ["relevance", "hallucination", "faithfulness", "toxicity", "tool_correctness"] as const;
+export type BuiltinEvalName = typeof BUILTIN_EVAL_NAMES[number];
 
 // WsAlertEvent is the real-time alert pushed over WebSocket by the backend hub.
 // Field names match the Go alert.Event JSON serialisation (snake_case).

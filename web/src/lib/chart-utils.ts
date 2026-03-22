@@ -91,21 +91,37 @@ export function toTokenSeries(runs: Run[]): TokenPoint[] {
 
 export interface QualityPoint {
   label: string;
-  score: number;
+  score: number;           // overall average across all eval types
   runId: string;
+  byEvalName: Record<string, number>; // per-eval-type scores
 }
 
 /**
  * Join sorted runs with their eval summaries to produce quality chart data.
- * Runs without an eval score are omitted.
+ * Multiple summaries per run (one per eval type) are averaged for the composite score.
+ * Runs with no eval scores are omitted.
  */
 export function toQualitySeries(runs: Run[], summaries: RunEvalSummary[]): QualityPoint[] {
-  const scoreByRunId = new Map(summaries.map((s) => [s.RunID, s.AvgScore]));
+  // Group summaries by RunID, collecting per-type scores.
+  const byRun = new Map<string, { sum: number; count: number; byName: Record<string, number> }>();
+  for (const s of summaries) {
+    const acc = byRun.get(s.RunID) ?? { sum: 0, count: 0, byName: {} };
+    acc.sum += s.AvgScore;
+    acc.count += 1;
+    acc.byName[s.EvalName] = s.AvgScore;
+    byRun.set(s.RunID, acc);
+  }
+
   const points: QualityPoint[] = [];
   for (const run of runs) {
-    const score = scoreByRunId.get(run.RunID);
-    if (score !== undefined) {
-      points.push({ label: formatLabel(run.StartTime), score, runId: run.RunID });
+    const acc = byRun.get(run.RunID);
+    if (acc && acc.count > 0) {
+      points.push({
+        label: formatLabel(run.StartTime),
+        score: acc.sum / acc.count,
+        runId: run.RunID,
+        byEvalName: acc.byName,
+      });
     }
   }
   return points;

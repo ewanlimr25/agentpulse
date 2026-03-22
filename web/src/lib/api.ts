@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -76,6 +76,17 @@ export const evalsApi = {
     apiFetch<SpanEval[]>(`/api/v1/runs/${runId}/evals`),
   summaryByProject: (projectId: string) =>
     apiFetch<RunEvalSummary[]>(`/api/v1/projects/${projectId}/evals/summary`),
+  listConfigs: (projectId: string) =>
+    apiFetch<EvalConfig[]>(`/api/v1/projects/${projectId}/evals/config`),
+  upsertConfig: (projectId: string, cfg: { eval_name: string; enabled: boolean; span_kind: string; prompt_template?: string }) =>
+    apiFetch<EvalConfig>(`/api/v1/projects/${projectId}/evals/config`, {
+      method: "POST",
+      body: JSON.stringify(cfg),
+    }),
+  deleteConfig: (projectId: string, evalName: string) =>
+    apiFetch<{ deleted: string }>(`/api/v1/projects/${projectId}/evals/config/${encodeURIComponent(evalName)}`, {
+      method: "DELETE",
+    }),
 };
 
 // ── Budget ────────────────────────────────────────────────────────────────────

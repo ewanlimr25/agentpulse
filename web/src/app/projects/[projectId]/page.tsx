@@ -16,6 +16,7 @@ import { TabBar } from "@/components/ui/TabBar";
 import { BudgetSection } from "@/components/budget/BudgetSection";
 import { AlertsSection } from "@/components/alerts/AlertsSection";
 import { ServicesSection } from "@/components/analytics/ServicesSection";
+import { EvalsSection } from "@/components/evals/EvalsSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
 
@@ -56,10 +57,11 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services">(
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals">(
     searchParams.get("tab") === "budget" ? "budget" :
     searchParams.get("tab") === "alerts" ? "alerts" :
-    searchParams.get("tab") === "services" ? "services" : "overview"
+    searchParams.get("tab") === "services" ? "services" :
+    searchParams.get("tab") === "evals" ? "evals" : "overview"
   );
 
   const queryClient = useQueryClient();
@@ -156,9 +158,10 @@ export default function ProjectPage({
             { key: "services", label: "Services" },
             { key: "budget", label: "Budget" },
             { key: "alerts", label: "Alerts" },
+            { key: "evals", label: "Evals" },
           ]}
           activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services")}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals")}
         />
 
         {activeTab === "overview" && (
@@ -176,6 +179,10 @@ export default function ProjectPage({
         {activeTab === "budget" && <BudgetSection projectId={projectId} />}
 
         {activeTab === "alerts" && <AlertsSection projectId={projectId} />}
+
+        {activeTab === "evals" && (
+          <EvalsSection projectId={projectId} runs={runs} evalSummaries={evalSummaries ?? []} />
+        )}
       </main>
     </div>
   );

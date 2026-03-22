@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { alertsApi } from "@/lib/api";
 import type { AlertRule } from "@/lib/types";
 import { AlertRulesTable } from "./AlertRulesTable";
 import { AlertEventsTable } from "./AlertEventsTable";
@@ -38,6 +37,7 @@ export function AlertsSection({ projectId }: Props) {
       <AlertEventsTable projectId={projectId} />
 
       <AddAlertRuleModal
+        key={editRule?.ID ?? (modalOpen ? "new" : "closed")}
         projectId={projectId}
         isOpen={modalOpen}
         editRule={editRule}
