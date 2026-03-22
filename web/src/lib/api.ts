@@ -1,13 +1,43 @@
 import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary } from "./types";
+import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+/** Thrown when the API returns 401 or 403. */
+export class AuthError extends Error {
+  status: number;
+  projectId: string | null;
+  constructor(status: number, message: string, projectId: string | null) {
+    super(message);
+    this.name = "AuthError";
+    this.status = status;
+    this.projectId = projectId;
+  }
+}
+
+/** Extract the projectID from a project-scoped API path, or null. */
+function extractProjectId(path: string): string | null {
+  const m = path.match(/\/api\/v1\/projects\/([^/]+)/);
+  return m ? m[1] : null;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const projectId = extractProjectId(path);
+  const apiKey = projectId ? getApiKey(projectId) : null;
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (apiKey) {
+    headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...init,
   });
   const body = await res.json();
+  if (res.status === 401 || res.status === 403) {
+    throw new AuthError(res.status, body.error ?? `HTTP ${res.status}`, projectId);
+  }
   if (!res.ok) {
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }

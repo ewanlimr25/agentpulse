@@ -35,6 +35,9 @@ type ProjectStore interface {
 	List(ctx context.Context) ([]*domain.Project, error)
 	Get(ctx context.Context, id string) (*domain.Project, error)
 	Create(ctx context.Context, p *domain.Project) error
+	// GetByAPIKeyHash looks up a project by the SHA-256 hex hash of its API key.
+	// Returns an error wrapping pgx.ErrNoRows if not found.
+	GetByAPIKeyHash(ctx context.Context, hash string) (*domain.Project, error)
 }
 
 // BudgetStore manages budget rules and alerts in Postgres.

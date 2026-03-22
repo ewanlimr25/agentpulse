@@ -1,11 +1,112 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { projectsApi } from "@/lib/api";
+import { saveApiKey } from "@/lib/api-keys";
 import { Navbar } from "@/components/Navbar";
 
+function CreateProjectModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const qc = useQueryClient();
+
+  const { mutate, isPending, error } = useMutation({
+    mutationFn: (n: string) => projectsApi.create(n),
+    onSuccess: (data) => {
+      saveApiKey(data.project.ID, data.api_key);
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setApiKey(data.api_key);
+    },
+  });
+
+  function handleCopy() {
+    if (!apiKey) return;
+    navigator.clipboard.writeText(apiKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] rounded-xl px-8 py-8">
+        {!apiKey ? (
+          <>
+            <h2 className="text-lg font-semibold text-[var(--text)] mb-6">Create Project</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = name.trim();
+                if (n) mutate(n);
+              }}
+              className="flex flex-col gap-4"
+            >
+              <div>
+                <label className="block text-xs text-[var(--text-muted)] mb-1">Project Name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="my-agent"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
+                />
+                {error && (
+                  <p className="text-xs text-red-400 mt-1">{(error as Error).message}</p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex-1 border border-[var(--border)] text-[var(--text-muted)] text-sm py-2 rounded-lg hover:border-indigo-500 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending || !name.trim()}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+                >
+                  {isPending ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2 className="text-lg font-semibold text-[var(--text)] mb-2">Project Created</h2>
+            <p className="text-sm text-[var(--text-muted)] mb-4">
+              Copy your API key now — it won&apos;t be shown again.
+            </p>
+            <div className="bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-3 mb-2">
+              <p className="text-xs font-mono text-green-400 break-all">{apiKey}</p>
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={handleCopy}
+                className="flex-1 border border-[var(--border)] text-[var(--text-muted)] text-sm py-2 rounded-lg hover:border-indigo-500 transition-colors"
+              >
+                {copied ? "Copied!" : "Copy Key"}
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
+  const [showCreate, setShowCreate] = useState(false);
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ["projects"],
     queryFn: projectsApi.list,
@@ -17,6 +118,12 @@ export default function ProjectsPage() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold text-[var(--text)]">Projects</h1>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            + New Project
+          </button>
         </div>
 
         {isLoading && (
@@ -31,12 +138,7 @@ export default function ProjectsPage() {
 
         {projects && projects.length === 0 && (
           <div className="text-[var(--text-muted)] border border-[var(--border)] rounded-xl px-6 py-10 text-center">
-            No projects yet. Create one via the API:
-            <pre className="mt-4 text-xs bg-[var(--surface-2)] rounded-lg p-4 text-left text-green-400 overflow-x-auto">
-              {`curl -X POST http://localhost:8080/api/v1/projects \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"my-project"}'`}
-            </pre>
+            No projects yet. Click <strong className="text-[var(--text)]">+ New Project</strong> to get started.
           </div>
         )}
 
@@ -60,6 +162,8 @@ export default function ProjectsPage() {
           ))}
         </div>
       </main>
+
+      {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
     </div>
   );
 }

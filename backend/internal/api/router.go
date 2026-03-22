@@ -30,7 +30,7 @@ func NewRouter(
 	r.Use(middleware.CORS)
 	r.Use(middleware.Logger)
 
-	// Health check
+	// Health check — always public
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		httputil.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
@@ -41,26 +41,37 @@ func NewRouter(
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals)
 
+	bearerAuth := middleware.BearerAuth(projects)
+
 	r.Route("/api/v1", func(r chi.Router) {
-		// Projects
-		r.Route("/projects", func(r chi.Router) {
-			projectHandler.Routes(r)
 
-			// Runs nested under project
-			r.Route("/{projectID}/runs", func(r chi.Router) {
-				r.Get("/", runHandler.List)
-			})
+		// ── Public project routes ─────────────────────────────────────────────
+		// GET /projects and POST /projects stay unauthenticated so the frontend
+		// can list projects without knowing which key to use, and so new
+		// projects can be created from the UI without a prior key.
+		r.Get("/projects", projectHandler.List)
+		r.Post("/projects", projectHandler.Create)
 
-			// Eval summary nested under project
-			r.Get("/{projectID}/evals/summary", evalHandler.SummaryByProject)
+		// ── Authenticated project-scoped routes ───────────────────────────────
+		// All routes under /{projectID} require a valid Bearer token that
+		// belongs to that specific project.
+		r.Route("/projects/{projectID}", func(r chi.Router) {
+			r.Use(bearerAuth)
 
-			// Budget nested under project
-			r.Route("/{projectID}/budget", func(r chi.Router) {
+			r.Get("/", projectHandler.Get)
+
+			r.Get("/runs", runHandler.List)
+			r.Get("/evals/summary", evalHandler.SummaryByProject)
+
+			r.Route("/budget", func(r chi.Router) {
 				budgetHandler.Routes(r)
 			})
 		})
 
-		// Runs (standalone — for run detail + spans + topology)
+		// ── Run-scoped routes (unauthenticated for now) ───────────────────────
+		// These routes don't carry a projectID in the URL, so per-project auth
+		// can't be applied without an additional DB lookup. Left open for MVP;
+		// a future auth pass will add project resolution from the run record.
 		r.Route("/runs/{runID}", func(r chi.Router) {
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
@@ -70,10 +81,10 @@ func NewRouter(
 			})
 		})
 
-		// Cross-project recent alerts (for global toast poller)
+		// Cross-project recent alerts — unauthenticated for now
 		r.Get("/budget/alerts/recent", budgetHandler.ListRecent)
 
-		// WebSocket — real-time budget alerts
+		// WebSocket — real-time budget alerts (validates token inline)
 		r.Get("/ws/alerts", hub.ServeWS)
 	})
 

@@ -61,3 +61,15 @@ func (s *ProjectStore) Create(ctx context.Context, p *domain.Project) error {
 	}
 	return nil
 }
+
+func (s *ProjectStore) GetByAPIKeyHash(ctx context.Context, hash string) (*domain.Project, error) {
+	p := &domain.Project{}
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, name, api_key_hash, created_at, updated_at
+		FROM projects WHERE api_key_hash = $1
+	`, hash).Scan(&p.ID, &p.Name, &p.APIKeyHash, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("project_store get_by_key_hash: %w", err)
+	}
+	return p, nil
+}

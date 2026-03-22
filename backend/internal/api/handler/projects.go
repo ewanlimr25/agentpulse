@@ -23,13 +23,7 @@ func NewProjectHandler(projects store.ProjectStore) *ProjectHandler {
 	return &ProjectHandler{projects: projects}
 }
 
-func (h *ProjectHandler) Routes(r chi.Router) {
-	r.Get("/", h.list)
-	r.Post("/", h.create)
-	r.Get("/{id}", h.get)
-}
-
-func (h *ProjectHandler) list(w http.ResponseWriter, r *http.Request) {
+func (h *ProjectHandler) List(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.projects.List(r.Context())
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list projects")
@@ -38,8 +32,8 @@ func (h *ProjectHandler) list(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, projects)
 }
 
-func (h *ProjectHandler) get(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "projectID")
 	p, err := h.projects.Get(r.Context(), id)
 	if err != nil {
 		httputil.Error(w, http.StatusNotFound, "project not found")
@@ -52,7 +46,7 @@ type createProjectRequest struct {
 	Name string `json:"name"`
 }
 
-func (h *ProjectHandler) create(w http.ResponseWriter, r *http.Request) {
+func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
 		httputil.Error(w, http.StatusBadRequest, "name is required")

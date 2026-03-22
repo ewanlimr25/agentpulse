@@ -5,8 +5,9 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InfiniteData } from "@tanstack/react-query";
 import Link from "next/link";
-import { projectsApi, evalsApi } from "@/lib/api";
+import { projectsApi, evalsApi, AuthError } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
+import { ApiKeyPrompt } from "@/components/ApiKeyPrompt";
 import { MetricCard } from "@/components/ui/MetricCard";
 import type { Run, RunsListResponse } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
@@ -43,9 +44,12 @@ export default function ProjectPage({
     searchParams.get("tab") === "budget" ? "budget" : "overview"
   );
 
-  const { data: project } = useQuery({
+  const queryClient = useQueryClient();
+
+  const { data: project, error: projectError } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
+    retry: (_, err) => !(err instanceof AuthError),
   });
 
   const { data: evalSummaries } = useQuery({
@@ -62,6 +66,25 @@ export default function ProjectPage({
   const errorRate = runs.length
     ? ((runs.filter((r) => r.Status === "error").length / runs.length) * 100).toFixed(1)
     : "0";
+
+  if (projectError instanceof AuthError) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
+          <div className="mb-2">
+            <Link href="/" className="text-sm text-[var(--text-muted)] hover:text-indigo-400">
+              ← Projects
+            </Link>
+          </div>
+          <ApiKeyPrompt
+            projectId={projectId}
+            onKeySubmit={() => queryClient.invalidateQueries({ queryKey: ["project", projectId] })}
+          />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
