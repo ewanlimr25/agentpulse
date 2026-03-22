@@ -1,7 +1,8 @@
 .PHONY: help dev-up dev-down dev-logs migrate-up migrate-down \
         collector-build collector-run backend-build backend-run \
         web-install web-dev web-build \
-        test test-collector test-backend test-web \
+        test test-collector test-backend test-web test-sdk-ts \
+        sdk-ts-install sdk-ts-codegen sdk-ts-build \
         seed lint
 
 SHELL := /bin/bash
@@ -109,11 +110,26 @@ seed-evals: ## Insert mock eval scores for all seeded llm.call spans (no API key
 		--database agentpulse < scripts/seed-evals.sql
 	@echo "Mock evals inserted."
 
+# ── TypeScript SDK ────────────────────────────────────────────────────────────
+
+sdk-ts-install: ## Install TypeScript SDK dependencies
+	cd sdk/typescript && npm install
+
+sdk-ts-codegen: ## Regenerate attribute constants from config/agent_attributes.yaml
+	cd sdk/typescript && npm run codegen
+
+sdk-ts-build: sdk-ts-codegen ## Build the TypeScript SDK (runs codegen first)
+	cd sdk/typescript && npm run build
+
+test-sdk-ts: sdk-ts-codegen ## Run TypeScript SDK tests
+	cd sdk/typescript && npm test
+
 # ── Combined ─────────────────────────────────────────────────────────────────
 
-test: test-collector test-backend test-web ## Run all tests
+test: test-collector test-backend test-web test-sdk-ts ## Run all tests
 
 lint: ## Run linters across all services
 	cd collector && go vet ./...
 	cd backend && go vet ./...
 	cd web && npm run lint
+	cd sdk/typescript && npm run lint

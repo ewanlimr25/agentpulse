@@ -1,0 +1,67 @@
+{
+  "name": "@agentpulse/sdk",
+  "version": "0.1.0",
+  "description": "OpenTelemetry-native observability SDK for AI agent workloads",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./integrations/vercel-ai": {
+      "require": "./dist/integrations/vercel-ai.js",
+      "import": "./dist/integrations/vercel-ai.mjs",
+      "types": "./dist/integrations/vercel-ai.d.ts"
+    },
+    "./integrations/openai": {
+      "require": "./dist/integrations/openai.js",
+      "import": "./dist/integrations/openai.mjs",
+      "types": "./dist/integrations/openai.d.ts"
+    },
+    "./integrations/langchain": {
+      "require": "./dist/integrations/langchain.js",
+      "import": "./dist/integrations/langchain.mjs",
+      "types": "./dist/integrations/langchain.d.ts"
+    }
+  },
+  "scripts": {
+    "prebuild": "tsx scripts/gen-attributes.ts",
+    "build": "tsup",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "codegen": "tsx scripts/gen-attributes.ts"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.7.0"
+  },
+  "peerDependenciesMeta": {
+    "ai": { "optional": true },
+    "openai": { "optional": true },
+    "@langchain/core": { "optional": true }
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/sdk-trace-base": "^1.25.0",
+    "@opentelemetry/sdk-trace-node": "^1.25.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.52.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.52.0",
+    "@opentelemetry/resources": "^1.25.0",
+    "@opentelemetry/semantic-conventions": "^1.25.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "ai": "^3.4.0",
+    "js-yaml": "^4.1.0",
+    "openai": "^4.68.0",
+    "@langchain/core": "^0.3.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0"
+  },
+  "engines": { "node": ">=18" }
+}

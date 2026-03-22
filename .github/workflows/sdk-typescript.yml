@@ -1,0 +1,89 @@
+name: TypeScript SDK
+
+on:
+  push:
+    paths:
+      - 'sdk/typescript/**'
+      - 'config/agent_attributes.yaml'
+  pull_request:
+    paths:
+      - 'sdk/typescript/**'
+      - 'config/agent_attributes.yaml'
+
+jobs:
+  build-and-test:
+    name: Build & Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+          cache-dependency-path: sdk/typescript/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: sdk/typescript
+      - name: Run codegen
+        run: npm run codegen
+        working-directory: sdk/typescript
+      - name: Build
+        run: npm run build
+        working-directory: sdk/typescript
+      - name: Test
+        run: npm test
+        working-directory: sdk/typescript
+
+  vercel-ai-compat:
+    name: Vercel AI SDK compat (${{ matrix.ai_version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ai_version: ['3.0.0', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install base deps
+        run: npm ci
+        working-directory: sdk/typescript
+      - name: Install specific ai version
+        run: npm install ai@${{ matrix.ai_version }}
+        working-directory: sdk/typescript
+      - name: Run codegen
+        run: npm run codegen
+        working-directory: sdk/typescript
+      - name: Run Vercel AI integration tests
+        run: npx vitest run tests/integrations/vercel-ai.test.ts
+        working-directory: sdk/typescript
+        continue-on-error: ${{ matrix.ai_version == 'latest' }}
+
+  openai-compat:
+    name: OpenAI SDK compat (${{ matrix.openai_version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        openai_version: ['4.28.0', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install base deps
+        run: npm ci
+        working-directory: sdk/typescript
+      - name: Install specific openai version
+        run: npm install openai@${{ matrix.openai_version }}
+        working-directory: sdk/typescript
+      - name: Run codegen
+        run: npm run codegen
+        working-directory: sdk/typescript
+      - name: Run OpenAI integration tests
+        run: npx vitest run tests/integrations/openai.test.ts
+        working-directory: sdk/typescript
