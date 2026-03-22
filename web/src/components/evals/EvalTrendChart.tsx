@@ -28,9 +28,8 @@ export function EvalTrendChart({ data }: Props) {
     new Set(data.flatMap((p) => Object.keys(p.byEvalName ?? {})))
   );
 
-  // Which lines are currently toggled on. Always default to composite Avg —
-  // individual type lines are opt-in via the toggle pills.
-  const [activeLines, setActiveLines] = useState<Set<string>>(new Set<string>());
+  // Default: show all individual eval type lines. "Avg" is the opt-in composite view.
+  const [activeLines, setActiveLines] = useState<Set<string>>(() => new Set(evalNames));
 
   const showComposite = activeLines.size === 0;
 
@@ -38,8 +37,9 @@ export function EvalTrendChart({ data }: Props) {
     setActiveLines((prev) => {
       const next = new Set(prev);
       if (next.has(name)) {
+        // Deselecting the last active line falls back to Avg
         next.delete(name);
-      } else if (next.size < 3) {
+      } else {
         next.add(name);
       }
       return next;
@@ -68,11 +68,10 @@ export function EvalTrendChart({ data }: Props) {
             <button
               key={name}
               onClick={() => toggle(name)}
-              disabled={!activeLines.has(name) && activeLines.size >= 3}
               className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                 activeLines.has(name)
                   ? "text-white"
-                  : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40 disabled:cursor-not-allowed"
+                  : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]"
               }`}
               style={activeLines.has(name) ? { backgroundColor: evalColor(name) } : undefined}
             >
@@ -106,7 +105,7 @@ export function EvalTrendChart({ data }: Props) {
           {showComposite ? (
             <Line type="monotone" dataKey="score" stroke="#34d399" strokeWidth={2} dot={showDots ? { r: 3 } : false} activeDot={{ r: 4 }} />
           ) : (
-            Array.from(activeLines).map((name) => (
+            evalNames.filter((name) => activeLines.has(name)).map((name) => (
               <Line
                 key={name}
                 type="monotone"
