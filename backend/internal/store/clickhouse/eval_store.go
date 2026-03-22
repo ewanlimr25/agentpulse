@@ -75,9 +75,13 @@ func (s *EvalStore) SummaryByProject(ctx context.Context, projectID string) ([]*
 	var summaries []*domain.RunEvalSummary
 	for rows.Next() {
 		s := &domain.RunEvalSummary{}
-		if err := rows.Scan(&s.RunID, &s.EvalName, &s.AvgScore, &s.SpanCount); err != nil {
+		var avgScore float64
+		var spanCount uint64
+		if err := rows.Scan(&s.RunID, &s.EvalName, &avgScore, &spanCount); err != nil {
 			return nil, fmt.Errorf("eval_store summary scan: %w", err)
 		}
+		s.AvgScore = float32(avgScore)
+		s.SpanCount = int(spanCount)
 		summaries = append(summaries, s)
 	}
 	return summaries, rows.Err()
