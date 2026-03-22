@@ -61,6 +61,22 @@ type EvalStore interface {
 	SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error)
 }
 
+// AlertRuleStore manages signal-based alert rules and events in Postgres.
+type AlertRuleStore interface {
+	ListRules(ctx context.Context, projectID string) ([]*domain.AlertRule, error)
+	GetRule(ctx context.Context, id string) (*domain.AlertRule, error)
+	CreateRule(ctx context.Context, r *domain.AlertRule) error
+	UpdateRule(ctx context.Context, r *domain.AlertRule) error
+	DeleteRule(ctx context.Context, id string) error
+	// ListEnabledRules returns all enabled rules across all projects (used by evaluator).
+	ListEnabledRules(ctx context.Context) ([]*domain.AlertRule, error)
+	ListEvents(ctx context.Context, projectID string, limit int) ([]*domain.AlertEvent, error)
+	CreateEvent(ctx context.Context, e *domain.AlertEvent) error
+	// LastEventForRule returns the most recent event for a rule, or nil if none.
+	LastEventForRule(ctx context.Context, ruleID string) (*domain.AlertEvent, error)
+	ListRecentEvents(ctx context.Context, limit int) ([]*domain.RecentAlertEvent, error)
+}
+
 // EvalJobStore manages the async eval work queue in Postgres.
 type EvalJobStore interface {
 	// Enqueue inserts a job; silently ignores duplicates (span_id, eval_name).

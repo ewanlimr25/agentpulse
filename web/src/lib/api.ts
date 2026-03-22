@@ -1,4 +1,4 @@
-import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary } from "./types";
+import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, AlertRule, AlertEvent, RecentAlertEvent } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -117,4 +117,36 @@ export const budgetApi = {
     ),
   listRecentAlerts: (limit = 20) =>
     apiFetch<RecentBudgetAlert[]>(`/api/v1/budget/alerts/recent?limit=${limit}`),
+};
+
+// ── Signal Alerts ─────────────────────────────────────────────────────────────
+
+export const alertsApi = {
+  listRules: (projectId: string) =>
+    apiFetch<AlertRule[]>(`/api/v1/projects/${projectId}/alerts/rules`),
+  createRule: (projectId: string, body: {
+    name: string; signal_type: string; threshold: number; compare_op: string;
+    window_seconds: number; scope_filter?: string; webhook_url?: string; enabled: boolean;
+  }) =>
+    apiFetch<AlertRule>(`/api/v1/projects/${projectId}/alerts/rules`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRule: (projectId: string, ruleId: string, body: {
+    name: string; signal_type: string; threshold: number; compare_op: string;
+    window_seconds: number; scope_filter?: string; webhook_url?: string; enabled: boolean;
+  }) =>
+    apiFetch<AlertRule>(`/api/v1/projects/${projectId}/alerts/rules/${ruleId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteRule: (projectId: string, ruleId: string) =>
+    apiFetch<{ deleted: string }>(
+      `/api/v1/projects/${projectId}/alerts/rules/${ruleId}`,
+      { method: "DELETE" }
+    ),
+  listEvents: (projectId: string, limit = 100) =>
+    apiFetch<AlertEvent[]>(`/api/v1/projects/${projectId}/alerts/events?limit=${limit}`),
+  listRecentEvents: (limit = 20) =>
+    apiFetch<RecentAlertEvent[]>(`/api/v1/alerts/events/recent?limit=${limit}`),
 };

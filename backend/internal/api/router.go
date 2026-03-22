@@ -21,6 +21,7 @@ func NewRouter(
 	topology store.TopologyStore,
 	budget store.BudgetStore,
 	evals store.EvalStore,
+	alertRules store.AlertRuleStore,
 	hub *alert.Hub,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -40,6 +41,7 @@ func NewRouter(
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals)
+	alertHandler := handler.NewAlertRuleHandler(alertRules)
 
 	bearerAuth := middleware.BearerAuth(projects)
 
@@ -66,6 +68,10 @@ func NewRouter(
 			r.Route("/budget", func(r chi.Router) {
 				budgetHandler.Routes(r)
 			})
+
+			r.Route("/alerts", func(r chi.Router) {
+				alertHandler.Routes(r)
+			})
 		})
 
 		// ── Run-scoped routes (unauthenticated for now) ───────────────────────
@@ -83,6 +89,7 @@ func NewRouter(
 
 		// Cross-project recent alerts — unauthenticated for now
 		r.Get("/budget/alerts/recent", budgetHandler.ListRecent)
+		r.Get("/alerts/events/recent", alertHandler.ListRecent)
 
 		// WebSocket — real-time budget alerts (validates token inline)
 		r.Get("/ws/alerts", hub.ServeWS)

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 
-import { budgetApi } from "@/lib/api";
+import { budgetApi, alertsApi } from "@/lib/api";
 import { useToast } from "@/components/toast/ToastContext";
+import { SIGNAL_LABELS, formatSignalValue, COMPARE_LABELS } from "@/components/alerts/alertUtils";
+import type { SignalType, CompareOp } from "@/lib/types";
 
 const POLL_INTERVAL_MS = 5_000;
 
@@ -15,6 +17,7 @@ export function useAlertWebSocket(projectId: string): { isConnected: boolean } {
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
   const lastSeenRef = useRef<string | null>(null);
+  const lastSeenSignalRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -51,9 +54,41 @@ export function useAlertWebSocket(projectId: string): { isConnected: boolean } {
       } catch { /* swallow — table UI shows errors */ }
     };
 
+    const pollSignal = async () => {
+      if (!mountedRef.current) return;
+      try {
+        const events = await alertsApi.listEvents(projectId, 10);
+        if (!mountedRef.current || events.length === 0) return;
+
+        const latest = events[0].TriggeredAt;
+        if (lastSeenSignalRef.current === null) {
+          lastSeenSignalRef.current = latest;
+          return;
+        }
+
+        const newEvents = events.filter((e) => e.TriggeredAt > lastSeenSignalRef.current!);
+        for (const evt of newEvents.reverse()) {
+          const label = SIGNAL_LABELS[evt.SignalType as SignalType] ?? evt.SignalType;
+          const val = formatSignalValue(evt.SignalType as SignalType, evt.CurrentValue);
+          const thr = formatSignalValue(evt.SignalType as SignalType, evt.Threshold);
+          const dir = COMPARE_LABELS[evt.CompareOp as CompareOp] ?? evt.CompareOp;
+          addToastRef.current({
+            title: `Alert — ${label}`,
+            message: `${val} is ${dir} threshold of ${thr}`,
+            variant: "notify",
+          });
+        }
+        if (newEvents.length > 0) {
+          lastSeenSignalRef.current = newEvents[newEvents.length - 1].TriggeredAt;
+        }
+      } catch { /* swallow */ }
+    };
+
     poll();
+    pollSignal();
     const id = setInterval(poll, POLL_INTERVAL_MS);
-    return () => { mountedRef.current = false; clearInterval(id); };
+    const id2 = setInterval(pollSignal, POLL_INTERVAL_MS);
+    return () => { mountedRef.current = false; clearInterval(id); clearInterval(id2); };
   }, [projectId]);
 
   return { isConnected: true };

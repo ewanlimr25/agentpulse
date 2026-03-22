@@ -13,6 +13,7 @@ import type { Run, RunsListResponse } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
 import { TabBar } from "@/components/ui/TabBar";
 import { BudgetSection } from "@/components/budget/BudgetSection";
+import { AlertsSection } from "@/components/alerts/AlertsSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
 
@@ -40,8 +41,9 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget">(
-    searchParams.get("tab") === "budget" ? "budget" : "overview"
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts">(
+    searchParams.get("tab") === "budget" ? "budget" :
+    searchParams.get("tab") === "alerts" ? "alerts" : "overview"
   );
 
   const queryClient = useQueryClient();
@@ -107,9 +109,13 @@ export default function ProjectPage({
         </div>
 
         <TabBar
-          tabs={[{ key: "overview", label: "Overview" }, { key: "budget", label: "Budget" }]}
+          tabs={[
+            { key: "overview", label: "Overview" },
+            { key: "budget", label: "Budget" },
+            { key: "alerts", label: "Alerts" },
+          ]}
           activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget")}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts")}
         />
 
         {activeTab === "overview" && (
@@ -123,6 +129,8 @@ export default function ProjectPage({
         )}
 
         {activeTab === "budget" && <BudgetSection projectId={projectId} />}
+
+        {activeTab === "alerts" && <AlertsSection projectId={projectId} />}
       </main>
     </div>
   );

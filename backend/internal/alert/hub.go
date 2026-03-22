@@ -17,16 +17,24 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Event is a budget alert pushed to connected clients.
+// Event is pushed to connected WebSocket clients for both budget and signal alerts.
+// Use the Type field to distinguish: "budget.alert" | "signal.alert".
 type Event struct {
-	Type      string  `json:"type"`       // "budget.alert"
+	Type      string  `json:"type"`
 	ProjectID string  `json:"project_id"`
 	RunID     string  `json:"run_id,omitempty"`
 	RuleID    string  `json:"rule_id"`
 	RuleName  string  `json:"rule_name"`
-	CostUSD   float64 `json:"cost_usd"`
-	LimitUSD  float64 `json:"limit_usd"`
 	Action    string  `json:"action"` // "notify" | "halt"
+
+	// Budget-specific fields (present when Type == "budget.alert")
+	CostUSD  float64 `json:"cost_usd,omitempty"`
+	LimitUSD float64 `json:"limit_usd,omitempty"`
+
+	// Signal-specific fields (present when Type == "signal.alert")
+	SignalType   string  `json:"signal_type,omitempty"`
+	CurrentValue float64 `json:"current_value,omitempty"`
+	Threshold    float64 `json:"threshold,omitempty"`
 }
 
 // Hub manages active WebSocket clients and broadcasts events.

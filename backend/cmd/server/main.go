@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
+	"github.com/agentpulse/agentpulse/backend/internal/alerteval"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
@@ -52,6 +53,7 @@ func main() {
 	budgetStore := pgstore.NewBudgetStore(pgPool)
 	evalStore := chstore.NewEvalStore(chConn)
 	evalJobStore := pgstore.NewEvalJobStore(pgPool)
+	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
 
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -61,6 +63,8 @@ func main() {
 	hub := alert.NewHub()
 	go hub.Run()
 	go alert.NewPoller(pgPool, hub).Run(ctx)
+	go alerteval.NewEvaluator(chConn, alertRuleStore, hub).Run(ctx)
+	slog.Info("alert evaluator started")
 
 	// ── Eval workers ──────────────────────────────────────────────────────
 	if cfg.AnthropicAPIKey != "" {
@@ -72,7 +76,7 @@ func main() {
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, hub)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, alertRuleStore, hub)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

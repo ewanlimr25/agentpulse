@@ -159,12 +159,55 @@ export interface RunEvalSummary {
 // WsAlertEvent is the real-time alert pushed over WebSocket by the backend hub.
 // Field names match the Go alert.Event JSON serialisation (snake_case).
 export interface WsAlertEvent {
-  type: string;        // "budget.alert"
+  type: string;        // "budget.alert" | "signal.alert"
   project_id: string;
   run_id?: string;
   rule_id: string;
   rule_name: string;
-  cost_usd: number;
-  limit_usd: number;
   action: string;      // "notify" | "halt"
+  // Budget-specific
+  cost_usd?: number;
+  limit_usd?: number;
+  // Signal-specific
+  signal_type?: SignalType;
+  current_value?: number;
+  threshold?: number;
+}
+
+// ── Multi-signal alerting ─────────────────────────────────────────────────────
+
+export type SignalType = "error_rate" | "latency_p95" | "quality_score" | "tool_failure";
+export type CompareOp = "gt" | "lt";
+
+export interface AlertRule {
+  ID: string;
+  ProjectID: string;
+  Name: string;
+  SignalType: SignalType;
+  Threshold: number;
+  CompareOp: CompareOp;
+  WindowSeconds: number;
+  ScopeFilter?: string;
+  WebhookURL?: string;
+  Enabled: boolean;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export interface AlertEvent {
+  ID: string;
+  RuleID: string;
+  ProjectID: string;
+  TriggeredAt: string;
+  SignalType: SignalType;
+  CurrentValue: number;
+  Threshold: number;
+  CompareOp: CompareOp;
+  ActionTaken: string;
+  Metadata: Record<string, unknown>;
+}
+
+export interface RecentAlertEvent extends AlertEvent {
+  ProjectName: string;
+  RuleName: string;
 }
