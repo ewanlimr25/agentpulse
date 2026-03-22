@@ -111,6 +111,9 @@ seed-evals: ## Insert mock eval scores (multi-type) and eval configs for all dem
 	@echo "Inserting mock eval scores..."
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < scripts/seed-evals.sql
+	@echo "Inserting eval trend data (5 synthetic runs per project)..."
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < scripts/seed-eval-trend.sql
 	@echo "Inserting eval configs per project..."
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < scripts/seed-eval-configs.sql
 	@echo "Mock evals inserted."
