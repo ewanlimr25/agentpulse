@@ -22,18 +22,20 @@ const evaluationInterval = 60 * time.Second
 // current signal value via ClickHouse, and fires an AlertEvent when a
 // threshold is crossed (with per-window de-duplication).
 type Evaluator struct {
-	ch        driver.Conn
-	ruleStore store.AlertRuleStore
-	hub       *alert.Hub
+	ch         driver.Conn
+	ruleStore  store.AlertRuleStore
+	hub        *alert.Hub
 	httpClient *http.Client
+	loopStore  store.LoopStore
 }
 
-func NewEvaluator(ch driver.Conn, ruleStore store.AlertRuleStore, hub *alert.Hub) *Evaluator {
+func NewEvaluator(ch driver.Conn, ruleStore store.AlertRuleStore, hub *alert.Hub, loopStore store.LoopStore) *Evaluator {
 	return &Evaluator{
 		ch:         ch,
 		ruleStore:  ruleStore,
 		hub:        hub,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
+		loopStore:  loopStore,
 	}
 }
 
@@ -142,6 +144,8 @@ func (e *Evaluator) querySignal(ctx context.Context, rule *domain.AlertRule) (fl
 			return -1, nil
 		}
 		return QueryToolFailureRate(ctx, e.ch, rule.ProjectID, *rule.ScopeFilter, rule.WindowSeconds)
+	case domain.SignalTypeAgentLoop:
+		return QueryAgentLoopCount(ctx, e.loopStore, rule.ProjectID, rule.WindowSeconds)
 	default:
 		return -1, nil
 	}

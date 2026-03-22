@@ -13,10 +13,11 @@ import (
 type RunHandler struct {
 	runs  store.RunStore
 	spans store.SpanStore
+	loops store.LoopStore
 }
 
-func NewRunHandler(runs store.RunStore, spans store.SpanStore) *RunHandler {
-	return &RunHandler{runs: runs, spans: spans}
+func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore) *RunHandler {
+	return &RunHandler{runs: runs, spans: spans, loops: loops}
 }
 
 func (h *RunHandler) Routes(r chi.Router) {
@@ -41,6 +42,21 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		total = 0 // non-fatal; frontend degrades gracefully
 	}
+
+	// Annotate runs with loop detection flag
+	if len(runs) > 0 {
+		runIDs := make([]string, len(runs))
+		for i, run := range runs {
+			runIDs[i] = run.RunID
+		}
+		loopMap, err := h.loops.HasLoops(r.Context(), runIDs)
+		if err == nil {
+			for _, run := range runs {
+				run.LoopDetected = loopMap[run.RunID]
+			}
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"runs":   runs,
 		"limit":  limit,
@@ -58,6 +74,13 @@ func (h *RunHandler) Get(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusNotFound, "run not found")
 		return
 	}
+
+	// Annotate run with loop detection flag
+	loopMap, err := h.loops.HasLoops(r.Context(), []string{runID})
+	if err == nil {
+		run.LoopDetected = loopMap[runID]
+	}
+
 	httputil.JSON(w, http.StatusOK, run)
 }
 

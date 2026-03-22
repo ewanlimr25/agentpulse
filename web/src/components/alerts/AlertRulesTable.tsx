@@ -14,10 +14,11 @@ interface Props {
 
 export function AlertRulesTable({ projectId, onAddRule, onEditRule }: Props) {
   const qc = useQueryClient();
-  const { data: rules = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["alertRules", projectId],
     queryFn: () => alertsApi.listRules(projectId),
   });
+  const rules = data ?? [];
 
   const toggleMutation = useMutation({
     mutationFn: (rule: AlertRule) =>

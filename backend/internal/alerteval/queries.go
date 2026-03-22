@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+
+	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
 // QueryErrorRate returns the percentage of runs (0–100) that have at least one
@@ -102,3 +104,17 @@ func QueryToolFailureRate(ctx context.Context, conn driver.Conn, projectID, tool
 // minSamples is the minimum number of data points required before evaluating
 // a rule. Prevents false alerts from empty or very sparse windows.
 const minSamples = 5
+
+// QueryAgentLoopCount returns the number of distinct runs with detected loops
+// within the given window. Uses Postgres via LoopStore.
+// Returns -1 if count is 0 (no loops — nothing to alert on).
+func QueryAgentLoopCount(ctx context.Context, loopStore store.LoopStore, projectID string, windowSeconds int) (float64, error) {
+	n, err := loopStore.CountByProject(ctx, projectID, windowSeconds)
+	if err != nil {
+		return 0, fmt.Errorf("query_agent_loop_count: %w", err)
+	}
+	if n == 0 {
+		return -1, nil
+	}
+	return float64(n), nil
+}

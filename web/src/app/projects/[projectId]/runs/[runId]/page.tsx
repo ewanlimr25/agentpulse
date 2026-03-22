@@ -3,12 +3,13 @@
 import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { runsApi, evalsApi } from "@/lib/api";
+import { runsApi, evalsApi, loopsApi } from "@/lib/api";
 import { Navbar } from "@/components/Navbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
+import { LoopBanner } from "@/components/loops/LoopBanner";
 import type { Span, SpanEval } from "@/lib/types";
 import { formatDurationNS } from "@/lib/format";
 
@@ -78,6 +79,11 @@ export default function RunPage({
     queryFn: () => evalsApi.listByRun(runId),
   });
 
+  const { data: loops } = useQuery({
+    queryKey: ["loops", runId],
+    queryFn: () => loopsApi.listByRun(runId),
+  });
+
   // Build a map from spanId to the latest eval (for the "relevance" eval_name)
   const evalsBySpan = new Map<string, SpanEval>(
     evals?.map((e) => [e.SpanID, e]) ?? []
@@ -110,6 +116,8 @@ export default function RunPage({
             View Topology →
           </Link>
         </div>
+
+        <LoopBanner loops={loops ?? []} />
 
         {run && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">

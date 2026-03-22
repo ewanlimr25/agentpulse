@@ -26,4 +26,7 @@ type Run struct {
 	ErrorCount uint64
 	// Status is "error" if any span errored, otherwise "ok".
 	Status string
+
+	// LoopDetected is true when the background loop detector has flagged this run.
+	LoopDetected bool
 }

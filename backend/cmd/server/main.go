@@ -14,6 +14,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
+	"github.com/agentpulse/agentpulse/backend/internal/loopdetect"
 	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
 )
@@ -52,8 +53,10 @@ func main() {
 	topologyStore := pgstore.NewTopologyStore(pgPool)
 	budgetStore := pgstore.NewBudgetStore(pgPool)
 	evalStore := chstore.NewEvalStore(chConn)
+	analyticsStore := chstore.NewAnalyticsStore(chConn)
 	evalJobStore := pgstore.NewEvalJobStore(pgPool)
 	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
+	loopStore := pgstore.NewLoopStore(pgPool)
 
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -63,8 +66,10 @@ func main() {
 	hub := alert.NewHub()
 	go hub.Run()
 	go alert.NewPoller(pgPool, hub).Run(ctx)
-	go alerteval.NewEvaluator(chConn, alertRuleStore, hub).Run(ctx)
+	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore).Run(ctx)
 	slog.Info("alert evaluator started")
+	go loopdetect.NewDetector(chConn, pgPool, loopStore, topologyStore, projectStore).Run(ctx)
+	slog.Info("loop detector started")
 
 	// ── Eval workers ──────────────────────────────────────────────────────
 	if cfg.AnthropicAPIKey != "" {
@@ -76,7 +81,7 @@ func main() {
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, alertRuleStore, hub)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, alertRuleStore, analyticsStore, loopStore, hub)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

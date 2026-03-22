@@ -31,6 +31,20 @@ export interface Run {
   TotalCostUSD: number;
   ErrorCount: number;
   Status: "ok" | "error";
+  LoopDetected?: boolean;
+}
+
+export interface RunLoop {
+  ID: string;
+  RunID: string;
+  ProjectID: string;
+  DetectionType: "repeated_tool_call" | "topology_cycle";
+  SpanName: string;
+  InputHash: string;
+  OutputHash: string;
+  Confidence: "high" | "low";
+  OccurrenceCount: number;
+  DetectedAt: string;
 }
 
 export interface SpanEvent {
@@ -176,7 +190,7 @@ export interface WsAlertEvent {
 
 // ── Multi-signal alerting ─────────────────────────────────────────────────────
 
-export type SignalType = "error_rate" | "latency_p95" | "quality_score" | "tool_failure";
+export type SignalType = "error_rate" | "latency_p95" | "quality_score" | "tool_failure" | "agent_loop";
 export type CompareOp = "gt" | "lt";
 
 export interface AlertRule {
@@ -210,4 +224,26 @@ export interface AlertEvent {
 export interface RecentAlertEvent extends AlertEvent {
   ProjectName: string;
   RuleName: string;
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export type AnalyticsWindow = "24h" | "7d";
+
+export interface ToolStats {
+  ToolName: string;
+  CallCount: number;
+  ErrorCount: number;
+  ErrorRate: number;      // 0–100 percentage, computed server-side
+  AvgLatencyMS: number;
+  P95LatencyMS: number;
+  TotalCostUSD: number;
+}
+
+export interface AgentCostStats {
+  AgentName: string;
+  TotalCostUSD: number;
+  CostPercent: number;    // 0–100, share of project total
+  CallCount: number;
+  AvgCostPerCall: number;
 }

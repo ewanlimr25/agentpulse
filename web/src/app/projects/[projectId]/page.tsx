@@ -2,29 +2,44 @@
 
 import { use, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { InfiniteData } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { projectsApi, evalsApi, AuthError } from "@/lib/api";
+import { saveApiKey, removeApiKey } from "@/lib/api-keys";
 import { Navbar } from "@/components/Navbar";
 import { ApiKeyPrompt } from "@/components/ApiKeyPrompt";
 import { MetricCard } from "@/components/ui/MetricCard";
-import type { Run, RunsListResponse } from "@/lib/types";
+import { runsApi } from "@/lib/api";
+import type { Run } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
 import { TabBar } from "@/components/ui/TabBar";
 import { BudgetSection } from "@/components/budget/BudgetSection";
 import { AlertsSection } from "@/components/alerts/AlertsSection";
+import { ServicesSection } from "@/components/analytics/ServicesSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
 
+const PAGE_SIZE = 20;
+
 function useAllFetchedRuns(projectId: string): Run[] {
-  const qc = useQueryClient();
-  const cached = qc.getQueryData<InfiniteData<RunsListResponse>>(["runs", projectId]);
-  if (!cached) return [];
+  // Same query key as RunList — React Query deduplicates requests and shares
+  // the cache, so this subscribes reactively without a second network call.
+  const { data } = useInfiniteQuery({
+    queryKey: ["runs", projectId],
+    queryFn: ({ pageParam }) => runsApi.list(projectId, PAGE_SIZE, pageParam as number),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const next = lastPage.offset + lastPage.limit;
+      return next < lastPage.total ? next : undefined;
+    },
+    retry: (_, err) => !(err instanceof AuthError),
+  });
+
+  if (!data) return [];
   const seen = new Set<string>();
   const runs: Run[] = [];
-  for (const page of cached.pages) {
-    for (const run of page.runs) {
+  for (const page of data.pages) {
+    for (const run of page.runs ?? []) {
       if (!seen.has(run.RunID)) {
         seen.add(run.RunID);
         runs.push(run);
@@ -41,12 +56,15 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts">(
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services">(
     searchParams.get("tab") === "budget" ? "budget" :
-    searchParams.get("tab") === "alerts" ? "alerts" : "overview"
+    searchParams.get("tab") === "alerts" ? "alerts" :
+    searchParams.get("tab") === "services" ? "services" : "overview"
   );
 
   const queryClient = useQueryClient();
+  const [keyError, setKeyError] = useState("");
+  const [isValidatingKey, setIsValidatingKey] = useState(false);
 
   const { data: project, error: projectError } = useQuery({
     queryKey: ["project", projectId],
@@ -57,6 +75,7 @@ export default function ProjectPage({
   const { data: evalSummaries } = useQuery({
     queryKey: ["evalSummaries", projectId],
     queryFn: () => evalsApi.summaryByProject(projectId),
+    retry: (_, err) => !(err instanceof AuthError),
   });
 
   // Reads from the same cache key that RunList populates via useInfiniteQuery
@@ -69,7 +88,10 @@ export default function ProjectPage({
     ? ((runs.filter((r) => r.Status === "error").length / runs.length) * 100).toFixed(1)
     : "0";
 
-  if (projectError instanceof AuthError) {
+  // Keep showing the prompt while we're validating — prevents a flash of the
+  // main page when fetchQuery briefly transitions the project query through
+  // "pending" state (error → pending → error/success).
+  if (projectError instanceof AuthError || isValidatingKey) {
     return (
       <div className="flex flex-col min-h-screen">
         <Navbar />
@@ -81,7 +103,27 @@ export default function ProjectPage({
           </div>
           <ApiKeyPrompt
             projectId={projectId}
-            onKeySubmit={() => queryClient.invalidateQueries({ queryKey: ["project", projectId] })}
+            keyError={keyError}
+            onKeySubmit={async (key) => {
+              setKeyError("");
+              setIsValidatingKey(true);
+              saveApiKey(projectId, key);
+              try {
+                await queryClient.fetchQuery({
+                  queryKey: ["project", projectId],
+                  queryFn: () => projectsApi.get(projectId),
+                  retry: false,
+                });
+                // Success — clear cached 401 errors from the other queries.
+                queryClient.removeQueries({ queryKey: ["runs", projectId] });
+                queryClient.removeQueries({ queryKey: ["evalSummaries", projectId] });
+              } catch {
+                removeApiKey(projectId);
+                setKeyError("Invalid API key — please check and try again.");
+              } finally {
+                setIsValidatingKey(false);
+              }
+            }}
           />
         </main>
       </div>
@@ -111,11 +153,12 @@ export default function ProjectPage({
         <TabBar
           tabs={[
             { key: "overview", label: "Overview" },
+            { key: "services", label: "Services" },
             { key: "budget", label: "Budget" },
             { key: "alerts", label: "Alerts" },
           ]}
           activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts")}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services")}
         />
 
         {activeTab === "overview" && (
@@ -127,6 +170,8 @@ export default function ProjectPage({
             <RunList projectId={projectId} />
           </>
         )}
+
+        {activeTab === "services" && <ServicesSection projectId={projectId} />}
 
         {activeTab === "budget" && <BudgetSection projectId={projectId} />}
 

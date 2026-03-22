@@ -22,6 +22,8 @@ func NewRouter(
 	budget store.BudgetStore,
 	evals store.EvalStore,
 	alertRules store.AlertRuleStore,
+	analytics store.AnalyticsStore,
+	loops store.LoopStore,
 	hub *alert.Hub,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -37,11 +39,13 @@ func NewRouter(
 	})
 
 	projectHandler := handler.NewProjectHandler(projects)
-	runHandler := handler.NewRunHandler(runs, spans)
+	runHandler := handler.NewRunHandler(runs, spans, loops)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals)
 	alertHandler := handler.NewAlertRuleHandler(alertRules)
+	analyticsHandler := handler.NewAnalyticsHandler(analytics)
+	loopHandler := handler.NewLoopHandler(loops)
 
 	bearerAuth := middleware.BearerAuth(projects)
 
@@ -72,6 +76,10 @@ func NewRouter(
 			r.Route("/alerts", func(r chi.Router) {
 				alertHandler.Routes(r)
 			})
+
+			r.Route("/analytics", func(r chi.Router) {
+				analyticsHandler.Routes(r)
+			})
 		})
 
 		// ── Run-scoped routes (unauthenticated for now) ───────────────────────
@@ -82,6 +90,7 @@ func NewRouter(
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
 			r.Get("/evals", evalHandler.ListByRun)
+			r.Get("/loops", loopHandler.ListByRun)
 			r.Route("/topology", func(r chi.Router) {
 				topologyHandler.Routes(r)
 			})

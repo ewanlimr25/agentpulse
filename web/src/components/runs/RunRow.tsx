@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { LoopBadge } from "@/components/loops/LoopBadge";
 import type { Run } from "@/lib/types";
 
 export function formatDuration(ms: number) {
@@ -25,7 +26,8 @@ export function RunRow({ run, projectId }: { run: Run; projectId: string }) {
           {new Date(run.StartTime).toLocaleString()}
         </p>
       </div>
-      <div className="flex gap-6 text-sm tabular-nums">
+      <div className="flex items-center gap-6 text-sm tabular-nums">
+        {run.LoopDetected && <LoopBadge />}
         <span className="text-[var(--text-muted)]">{formatDuration(run.DurationMS)}</span>
         <span className="text-indigo-400">{formatCost(run.TotalCostUSD)}</span>
         <span className="text-[var(--text-muted)]">{run.TotalTokens.toLocaleString()} tok</span>

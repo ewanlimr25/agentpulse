@@ -13,7 +13,7 @@ interface Props {
   onClose: () => void;
 }
 
-const SIGNAL_TYPES: SignalType[] = ["error_rate", "latency_p95", "quality_score", "tool_failure"];
+const SIGNAL_TYPES: SignalType[] = ["error_rate", "latency_p95", "quality_score", "tool_failure", "agent_loop"];
 const WINDOW_PRESETS = [
   { label: "5 min", value: 300 },
   { label: "15 min", value: 900 },
@@ -92,6 +92,8 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
     ? "0.0 – 1.0"
     : signalType === "latency_p95"
     ? "milliseconds"
+    : signalType === "agent_loop"
+    ? "number of looping runs"
     : "percentage (0–100)";
 
   return (
@@ -119,7 +121,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               <label className="block text-xs text-[var(--text-muted)] mb-1">Signal Type</label>
               <select
                 value={signalType}
-                onChange={(e) => { setSignalType(e.target.value as SignalType); setCompareOp(e.target.value === "quality_score" ? "lt" : "gt"); }}
+                onChange={(e) => { setSignalType(e.target.value as SignalType); setCompareOp(e.target.value === "quality_score" ? "lt" : "gt"); setThreshold(""); }}
                 className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
               >
                 {SIGNAL_TYPES.map((s) => (

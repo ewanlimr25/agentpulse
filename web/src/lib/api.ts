@@ -1,4 +1,4 @@
-import type { Project, Run, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, AlertRule, AlertEvent, RecentAlertEvent } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -149,4 +149,24 @@ export const alertsApi = {
     apiFetch<AlertEvent[]>(`/api/v1/projects/${projectId}/alerts/events?limit=${limit}`),
   listRecentEvents: (limit = 20) =>
     apiFetch<RecentAlertEvent[]>(`/api/v1/alerts/events/recent?limit=${limit}`),
+};
+
+// ── Loops ─────────────────────────────────────────────────────────────────────
+
+export const loopsApi = {
+  listByRun: (runId: string) =>
+    apiFetch<RunLoop[]>(`/api/v1/runs/${runId}/loops`),
+};
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export const analyticsApi = {
+  toolStats: (projectId: string, window: AnalyticsWindow = "24h") =>
+    apiFetch<{ tools: ToolStats[]; window: string }>(
+      `/api/v1/projects/${projectId}/analytics/tools?window=${window}`
+    ),
+  agentCostStats: (projectId: string, window: AnalyticsWindow = "24h") =>
+    apiFetch<{ agents: AgentCostStats[]; window: string }>(
+      `/api/v1/projects/${projectId}/analytics/agents?window=${window}`
+    ),
 };

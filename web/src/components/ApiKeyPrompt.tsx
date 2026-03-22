@@ -1,30 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { saveApiKey } from "@/lib/api-keys";
 
 interface Props {
   projectId: string;
-  onKeySubmit: () => void;
+  /** External error string set by the parent after key validation fails. */
+  keyError?: string;
+  /** Called with the raw key; resolves when done, never throws (errors come via keyError). */
+  onKeySubmit: (key: string) => Promise<void>;
 }
 
-/**
- * Shown when a project page receives a 401. Lets the user paste their API key.
- * The key is saved to localStorage and queries are invalidated on submit.
- */
-export function ApiKeyPrompt({ projectId, onKeySubmit }: Props) {
+export function ApiKeyPrompt({ projectId: _projectId, keyError, onKeySubmit }: Props) {
   const [key, setKey] = useState("");
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
+  const [pending, setPending] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  const displayError = keyError || localError;
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = key.trim();
     if (!trimmed) {
-      setError("API key cannot be empty.");
+      setLocalError("API key cannot be empty.");
       return;
     }
-    saveApiKey(projectId, trimmed);
-    onKeySubmit();
+    setLocalError("");
+    setPending(true);
+    await onKeySubmit(trimmed).finally(() => setPending(false));
   }
 
   return (
@@ -38,25 +40,26 @@ export function ApiKeyPrompt({ projectId, onKeySubmit }: Props) {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">
-              API Key
-            </label>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">API Key</label>
             <input
               type="password"
               autoComplete="off"
               placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               value={key}
-              onChange={(e) => { setKey(e.target.value); setError(""); }}
-              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] font-mono focus:outline-none focus:border-indigo-500"
+              onChange={(e) => { setKey(e.target.value); setLocalError(""); }}
+              className={`w-full bg-[var(--surface-2)] border rounded-lg px-3 py-2 text-sm text-[var(--text)] font-mono focus:outline-none focus:border-indigo-500 ${
+                displayError ? "border-red-500" : "border-[var(--border)]"
+              }`}
             />
-            {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+            {displayError && <p className="text-xs text-red-400 mt-1">{displayError}</p>}
           </div>
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+            disabled={pending}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-lg transition-colors"
           >
-            Unlock Project
+            {pending ? "Verifying…" : "Unlock Project"}
           </button>
         </form>
 

@@ -88,3 +88,19 @@ type EvalJobStore interface {
 	// MarkFailed marks a job as failed with an error message.
 	MarkFailed(ctx context.Context, id, errMsg string) error
 }
+
+// LoopStore manages detected agent loops in Postgres.
+type LoopStore interface {
+	Upsert(ctx context.Context, loop *domain.RunLoop) error
+	ListByRun(ctx context.Context, runID string) ([]*domain.RunLoop, error)
+	HasLoops(ctx context.Context, runIDs []string) (map[string]bool, error)
+	CountByProject(ctx context.Context, projectID string, windowSeconds int) (int, error)
+}
+
+// AnalyticsStore queries per-tool and per-agent aggregates from ClickHouse.
+type AnalyticsStore interface {
+	// ToolStats returns per-tool aggregates for tool.call spans within windowSeconds.
+	ToolStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ToolStats, error)
+	// AgentCostStats returns per-agent cost breakdown within windowSeconds.
+	AgentCostStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.AgentCostStats, error)
+}

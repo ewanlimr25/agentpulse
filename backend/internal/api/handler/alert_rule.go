@@ -67,9 +67,10 @@ func (req *alertRuleRequest) validate() string {
 	}
 	switch req.SignalType {
 	case domain.SignalTypeErrorRate, domain.SignalTypeLatencyP95,
-		domain.SignalTypeQualityScore, domain.SignalTypeToolFailure:
+		domain.SignalTypeQualityScore, domain.SignalTypeToolFailure,
+		domain.SignalTypeAgentLoop:
 	default:
-		return "signal_type must be one of: error_rate, latency_p95, quality_score, tool_failure"
+		return "signal_type must be one of: error_rate, latency_p95, quality_score, tool_failure, agent_loop"
 	}
 	if req.Threshold < 0 {
 		return "threshold must be >= 0"

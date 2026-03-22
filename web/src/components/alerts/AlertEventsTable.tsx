@@ -20,11 +20,12 @@ function relativeTime(iso: string): string {
 }
 
 export function AlertEventsTable({ projectId }: Props) {
-  const { data: events = [] } = useQuery({
+  const { data } = useQuery({
     queryKey: ["alertEvents", projectId],
     queryFn: () => alertsApi.listEvents(projectId, 50),
     refetchInterval: 10_000,
   });
+  const events = data ?? [];
 
   return (
     <div>

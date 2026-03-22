@@ -10,6 +10,7 @@ const (
 	SignalTypeLatencyP95   SignalType = "latency_p95"   // p95 run duration in ms
 	SignalTypeQualityScore SignalType = "quality_score" // avg eval score (0.0–1.0)
 	SignalTypeToolFailure  SignalType = "tool_failure"  // % of tool spans with error
+	SignalTypeAgentLoop    SignalType = "agent_loop"    // number of looping runs in window
 )
 
 // CompareOp is the comparison direction for threshold evaluation.
