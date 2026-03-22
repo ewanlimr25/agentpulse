@@ -107,10 +107,12 @@ seed: db-reset ## Create demo projects via API and seed with realistic multi-age
 	@sleep 5
 	$(MAKE) seed-evals
 
-seed-evals: ## Insert mock eval scores for all seeded llm.call spans (no API key needed)
+seed-evals: ## Insert mock eval scores (multi-type) and eval configs for all demo projects
 	@echo "Inserting mock eval scores..."
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < scripts/seed-evals.sql
+	@echo "Inserting eval configs per project..."
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < scripts/seed-eval-configs.sql
 	@echo "Mock evals inserted."
 
 # ── TypeScript SDK ────────────────────────────────────────────────────────────
