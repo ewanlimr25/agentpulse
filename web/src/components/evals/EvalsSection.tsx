@@ -35,7 +35,7 @@ export function EvalsSection({ projectId, runs, evalSummaries }: Props) {
       <div>
         <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Eval Trends</h2>
         <div style={{ height: 200 }}>
-          <EvalTrendChart data={qualitySeries} defaultShowAll />
+          <EvalTrendChart data={qualitySeries} />
         </div>
       </div>
 

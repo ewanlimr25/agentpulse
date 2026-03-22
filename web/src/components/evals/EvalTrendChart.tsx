@@ -20,23 +20,17 @@ function evalColor(name: string): string {
 
 interface Props {
   data: QualityPoint[];
-  /** If true, show all individual eval lines by default (Evals tab). Otherwise show composite avg. */
-  defaultShowAll?: boolean;
 }
 
-export function EvalTrendChart({ data, defaultShowAll = false }: Props) {
+export function EvalTrendChart({ data }: Props) {
   // Collect all eval type names present in the data.
   const evalNames = Array.from(
     new Set(data.flatMap((p) => Object.keys(p.byEvalName ?? {})))
   );
 
-  // Which lines are currently toggled on.
-  const [activeLines, setActiveLines] = useState<Set<string>>(() => {
-    if (defaultShowAll && evalNames.length > 0) {
-      return new Set(evalNames.slice(0, 3));
-    }
-    return new Set<string>();
-  });
+  // Which lines are currently toggled on. Always default to composite Avg —
+  // individual type lines are opt-in via the toggle pills.
+  const [activeLines, setActiveLines] = useState<Set<string>>(new Set<string>());
 
   const showComposite = activeLines.size === 0;
 
@@ -53,6 +47,7 @@ export function EvalTrendChart({ data, defaultShowAll = false }: Props) {
   }
 
   const xAxisInterval = data.length > 15 ? Math.floor(data.length / 8) : undefined;
+  const showDots = data.length <= 5;
 
   return (
     <ChartCard title="Quality Score" isEmpty={data.length < 2}>
@@ -109,7 +104,7 @@ export function EvalTrendChart({ data, defaultShowAll = false }: Props) {
           <ReferenceLine y={0.7} stroke="#6b7280" strokeDasharray="4 2" strokeOpacity={0.5} />
 
           {showComposite ? (
-            <Line type="monotone" dataKey="score" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+            <Line type="monotone" dataKey="score" stroke="#34d399" strokeWidth={2} dot={showDots ? { r: 3 } : false} activeDot={{ r: 4 }} />
           ) : (
             Array.from(activeLines).map((name) => (
               <Line
@@ -119,7 +114,7 @@ export function EvalTrendChart({ data, defaultShowAll = false }: Props) {
                 name={name}
                 stroke={evalColor(name)}
                 strokeWidth={2}
-                dot={false}
+                dot={showDots ? { r: 3 } : false}
                 activeDot={{ r: 4 }}
               />
             ))
