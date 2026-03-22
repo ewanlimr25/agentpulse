@@ -26,7 +26,8 @@ export function EvalsSection({ projectId, runs, evalSummaries }: Props) {
     retry: (_, err) => !(err instanceof AuthError),
   });
 
-  const qualitySeries = toQualitySeries(runs, evalSummaries);
+  const sortedRuns = [...runs].sort((a, b) => new Date(a.StartTime).getTime() - new Date(b.StartTime).getTime());
+  const qualitySeries = toQualitySeries(sortedRuns, evalSummaries);
 
   return (
     <div className="flex flex-col gap-8">
