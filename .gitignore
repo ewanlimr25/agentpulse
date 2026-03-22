@@ -27,6 +27,9 @@ web/out/
 .idea/
 .vscode/
 *.swp
+
+# Local dev notes (not for repo)
+CLAUDE.md
 sdk/python/src/agentpulse/__pycache__/
 sdk/python/tests/__pycache__/
 sdk/python/.coverage
