@@ -23,6 +23,7 @@ export const MEMORY_WRITE: AgentSpanKind = "memory.write"
 
 export const PROJECT_ID = "agentpulse.project.id" as const
 export const RUN_ID = "agentpulse.run.id" as const
+export const SESSION_ID = "agentpulse.session_id" as const
 export const AGENT_NAME = "agent.name" as const
 
 // ── LLM ─────────────────────────────────────────────────────────────────────

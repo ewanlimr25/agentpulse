@@ -8,7 +8,7 @@
 
 import { trace, SpanStatusCode, type Span, type Tracer } from '@opentelemetry/api'
 import * as attrs from './generated/attributes.js'
-import { getRunId, getProjectId } from './context.js'
+import { getRunId, getProjectId, getSessionId } from './context.js'
 
 // Allow tests to override the tracer
 let _tracerOverride: Tracer | undefined
@@ -32,6 +32,8 @@ function setCommonAttrs(
   span.setAttribute(attrs.RUN_ID, getRunId(runId))
   const projectId = getProjectId()
   if (projectId) span.setAttribute(attrs.PROJECT_ID, projectId)
+  const sessionId = getSessionId()
+  if (sessionId) span.setAttribute(attrs.SESSION_ID, sessionId)
   if (agentName) span.setAttribute(attrs.AGENT_NAME, agentName)
 }
 

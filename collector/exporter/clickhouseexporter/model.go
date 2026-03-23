@@ -16,6 +16,7 @@ type spanRow struct {
 
 	RunID     string
 	ProjectID string
+	SessionID string
 
 	AgentSpanKind string
 	AgentName     string
@@ -59,6 +60,7 @@ func spanRowFromOTel(span ptrace.Span, resource pcommon.Resource, projectID stri
 
 	// Fields written by agentsemanticproc
 	row.RunID = strAttr(attrs, "agentpulse.run_id")
+	row.SessionID = strAttr(attrs, "agentpulse.session_id")
 	row.AgentSpanKind = strAttr(attrs, "agentpulse.span_kind")
 	row.AgentName = strAttr(attrs, "agentpulse.agent.name")
 	row.ModelID = strAttr(attrs, "agentpulse.model_id")

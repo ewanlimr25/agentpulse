@@ -22,6 +22,20 @@ type RunStore interface {
 	Count(ctx context.Context, projectID string) (int, error)
 	// Get returns a single run with its aggregated metrics.
 	Get(ctx context.Context, runID string) (*domain.Run, error)
+	// ListBySession returns all runs for a session, oldest first.
+	// projectID is required to enforce project-scoped access at the store layer.
+	ListBySession(ctx context.Context, projectID, sessionID string) ([]*domain.Run, error)
+}
+
+// SessionStore reads session aggregates from the ClickHouse session_agg MV.
+// All methods require projectID to enforce project-scoped access at the query layer.
+type SessionStore interface {
+	// List returns sessions for a project ordered by last_run_at DESC, paginated.
+	List(ctx context.Context, projectID string, limit, offset int) ([]*domain.Session, error)
+	// Count returns the total number of sessions for a project.
+	Count(ctx context.Context, projectID string) (int, error)
+	// Get returns a single session aggregate.
+	Get(ctx context.Context, projectID, sessionID string) (*domain.Session, error)
 }
 
 // TopologyStore reads topology graphs from Postgres.

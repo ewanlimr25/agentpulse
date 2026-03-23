@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { LoopBadge } from "@/components/loops/LoopBadge";
+import { SessionBadge } from "@/components/sessions/SessionBadge";
 import type { Run } from "@/lib/types";
 
 export function formatDuration(ms: number) {
@@ -28,6 +29,7 @@ export function RunRow({ run, projectId }: { run: Run; projectId: string }) {
       </div>
       <div className="flex items-center gap-6 text-sm tabular-nums">
         {run.LoopDetected && <LoopBadge />}
+        {run.SessionID && <SessionBadge projectId={projectId} sessionId={run.SessionID} />}
         <span className="text-[var(--text-muted)]">{formatDuration(run.DurationMS)}</span>
         <span className="text-indigo-400">{formatCost(run.TotalCostUSD)}</span>
         <span className="text-[var(--text-muted)]">{run.TotalTokens.toLocaleString()} tok</span>

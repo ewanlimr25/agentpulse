@@ -21,7 +21,15 @@ Quick start::
         return result
 """
 
-from agentpulse._context import get_run_id, reset_run, set_run_id
+from agentpulse._context import (
+    generate_session_id,
+    get_run_id,
+    get_session_id,
+    reset_run,
+    reset_session,
+    set_run_id,
+    set_session_id,
+)
 from agentpulse._version import __version__
 from agentpulse.config import AgentPulseConfig, load_config
 from agentpulse.spans import (
@@ -62,6 +70,10 @@ __all__ = [
     "set_run_id",
     "get_run_id",
     "reset_run",
+    "set_session_id",
+    "get_session_id",
+    "generate_session_id",
+    "reset_session",
     # Meta
     "__version__",
 ]

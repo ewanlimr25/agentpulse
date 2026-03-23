@@ -48,10 +48,21 @@ type alertRule struct {
 	scopeFilter   string // tool name for tool_failure; empty otherwise
 }
 
+// sessionScenarioFn is a scenario that also accepts a sessionID.
+type sessionScenarioFn func(ctx context.Context, tracer trace.Tracer, projectID, sessionID string) error
+
+// sessionGroup defines a group of runs that share the same session_id,
+// simulating a multi-turn conversation.
+type sessionGroup struct {
+	sessionID string
+	turns     []sessionScenarioFn
+}
+
 type demoProjectWithRules struct {
 	demoProject
-	budgetRule  budgetRule
-	alertRules  []alertRule
+	budgetRule    budgetRule
+	alertRules    []alertRule
+	sessionGroups []sessionGroup
 }
 
 var demoProjects = []demoProjectWithRules{
@@ -87,6 +98,34 @@ var demoProjects = []demoProjectWithRules{
 			{"High error rate", "error_rate", 8.0, "gt", 3600, ""},
 			// create_ticket errors 20% of the time in escalation → fires at 10% threshold
 			{"Ticket service failures", "tool_failure", 10.0, "gt", 3600, "create_ticket"},
+		},
+		// Multi-turn sessions simulating customer conversations across multiple agent runs.
+		sessionGroups: []sessionGroup{
+			{
+				sessionID: "session-billing-dispute-001",
+				turns: []sessionScenarioFn{
+					scenarioSupportTriageSession,     // turn 1: initial contact, classified as billing
+					scenarioSupportTriageSession,     // turn 2: follow-up, still in triage
+					scenarioSupportEscalationSession, // turn 3: escalated to human agent
+				},
+			},
+			{
+				sessionID: "session-tech-support-002",
+				turns: []sessionScenarioFn{
+					scenarioSupportTriageSession,     // turn 1: initial report
+					scenarioSupportTriageSession,     // turn 2: kb search attempt
+					scenarioSupportTriageSession,     // turn 3: kb resolves issue
+					scenarioSupportTriageSession,     // turn 4: confirmation follow-up
+				},
+			},
+			{
+				sessionID: "session-shipping-003",
+				turns: []sessionScenarioFn{
+					scenarioSupportTriageSession,     // turn 1: package not arrived
+					scenarioSupportEscalationSession, // turn 2: escalated, ticket created
+					scenarioSupportTriageSession,     // turn 3: resolution confirmed
+				},
+			},
 		},
 	},
 	{
@@ -184,6 +223,18 @@ func runDemo(ctx context.Context, tracer trace.Tracer, apiBase, endpoint string,
 				log.Printf("  scenario error: %v", err)
 			}
 			time.Sleep(delay)
+		}
+
+		// Seed multi-turn session groups (if any configured for this project).
+		for _, sg := range dp.sessionGroups {
+			log.Printf("  seeding session %s (%d turns)", sg.sessionID, len(sg.turns))
+			for t, fn := range sg.turns {
+				log.Printf("    turn %d/%d  session=%s", t+1, len(sg.turns), sg.sessionID)
+				if err := fn(ctx, tracer, projectID, sg.sessionID); err != nil {
+					log.Printf("    session turn error: %v", err)
+				}
+				time.Sleep(delay)
+			}
 		}
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

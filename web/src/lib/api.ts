@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -180,4 +180,17 @@ export const analyticsApi = {
     apiFetch<{ agents: AgentCostStats[]; window: string }>(
       `/api/v1/projects/${projectId}/analytics/agents?window=${window}`
     ),
+};
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+export const sessionsApi = {
+  list: (projectId: string, limit = 50, offset = 0) =>
+    apiFetch<SessionsListResponse>(
+      `/api/v1/projects/${projectId}/sessions?limit=${limit}&offset=${offset}`
+    ),
+  get: (projectId: string, sessionId: string) =>
+    apiFetch<Session>(`/api/v1/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}`),
+  listRuns: (projectId: string, sessionId: string) =>
+    apiFetch<Run[]>(`/api/v1/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/runs`),
 };

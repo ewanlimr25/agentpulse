@@ -43,6 +43,12 @@ migrate-up: ## Apply all pending migrations
 		--database agentpulse < migrations/clickhouse/004_span_evals.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/005_eval_prompt_version.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/006_session_id.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/007_run_metrics_session.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/008_session_agg.sql
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/004_project_eval_configs.up.sql
 	@echo "Migrations complete."
 
@@ -99,6 +105,8 @@ db-reset: ## Truncate all app data (keeps schema; safe to re-seed)
 		--database agentpulse --query "TRUNCATE TABLE spans;"
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse --query "TRUNCATE TABLE span_evals;"
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse --query "TRUNCATE TABLE session_agg;"
 	@echo "Database reset complete."
 
 seed: db-reset ## Create demo projects via API and seed with realistic multi-agent runs

@@ -27,6 +27,9 @@ type Run struct {
 	// Status is "error" if any span errored, otherwise "ok".
 	Status string
 
+	// SessionID groups this run into a multi-turn session (empty if not set).
+	SessionID string
+
 	// LoopDetected is true when the background loop detector has flagged this run.
 	LoopDetected bool
 }

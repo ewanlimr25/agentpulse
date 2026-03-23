@@ -29,6 +29,7 @@ MEMORY_WRITE: AgentSpanKind = "memory.write"
 
 PROJECT_ID = "agentpulse.project_id"   # Checked by collector field_extraction
 RUN_ID = "agentpulse.run_id"           # Groups spans into a single execution
+SESSION_ID = "agentpulse.session_id"   # Groups multiple runs into a conversation (opt-in)
 AGENT_NAME = "agent.name"              # Collector resolves via field_extraction.agent_name
 
 # ── LLM ───────────────────────────────────────────────────────────────────────

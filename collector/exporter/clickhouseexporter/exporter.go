@@ -166,7 +166,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 
 	batch, err := conn.PrepareBatch(ctx, fmt.Sprintf(`INSERT INTO %s.%s (
 		trace_id, span_id, parent_span_id,
-		run_id, project_id,
+		run_id, project_id, session_id,
 		agent_span_kind, agent_name, model_id,
 		span_name, service_name, status_code, status_message,
 		start_time, end_time,
@@ -180,7 +180,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 	for _, r := range rows {
 		if err := batch.Append(
 			r.TraceID, r.SpanID, r.ParentSpanID,
-			r.RunID, r.ProjectID,
+			r.RunID, r.ProjectID, r.SessionID,
 			r.AgentSpanKind, r.AgentName, r.ModelID,
 			r.SpanName, r.ServiceName, r.StatusCode, r.StatusMessage,
 			r.StartTime, r.EndTime,

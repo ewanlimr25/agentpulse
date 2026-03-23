@@ -32,6 +32,27 @@ export interface Run {
   ErrorCount: number;
   Status: "ok" | "error";
   LoopDetected?: boolean;
+  SessionID?: string;
+}
+
+export interface Session {
+  SessionID: string;
+  ProjectID: string;
+  RunCount: number;
+  TotalCostUSD: number;
+  TotalTokens: number;
+  InputTokens: number;
+  OutputTokens: number;
+  ErrorCount: number;
+  FirstRunAt: string;
+  LastRunAt: string;
+}
+
+export interface SessionsListResponse {
+  sessions: Session[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface RunLoop {

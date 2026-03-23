@@ -25,6 +25,7 @@ func NewRouter(
 	alertRules store.AlertRuleStore,
 	analytics store.AnalyticsStore,
 	loops store.LoopStore,
+	sessions store.SessionStore,
 	hub *alert.Hub,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -48,6 +49,7 @@ func NewRouter(
 	alertHandler := handler.NewAlertRuleHandler(alertRules)
 	analyticsHandler := handler.NewAnalyticsHandler(analytics)
 	loopHandler := handler.NewLoopHandler(loops)
+	sessionHandler := handler.NewSessionHandler(sessions, runs)
 
 	bearerAuth := middleware.BearerAuth(projects)
 
@@ -85,6 +87,10 @@ func NewRouter(
 
 			r.Route("/analytics", func(r chi.Router) {
 				analyticsHandler.Routes(r)
+			})
+
+			r.Route("/sessions", func(r chi.Router) {
+				sessionHandler.Routes(r)
 			})
 		})
 

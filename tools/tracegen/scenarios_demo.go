@@ -65,6 +65,14 @@ func baseAttrs(projectID, runID, agentName string) []attribute.KeyValue {
 	}
 }
 
+// sessionAttrs returns an attribute slice that stamps agentpulse.session_id on a span.
+// Append to baseAttrs (or combine) when building session-grouped runs.
+func sessionAttrs(sessionID string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.session_id", sessionID),
+	}
+}
+
 func withLLM(model, system string, inputTokens, outputTokens int) []attribute.KeyValue {
 	conv := sampleConversations[rand.Intn(len(sampleConversations))]
 	return []attribute.KeyValue{
@@ -586,4 +594,116 @@ func span(tracer trace.Tracer, ctx context.Context, name string, attrs ...attrib
 // rv returns a random int in [min, max).
 func rv(min, max int) int {
 	return min + rand.Intn(max-min)
+}
+
+// ── Session-aware scenario variants ─────────────────────────────────────────
+//
+// These mirror the support scenarios but stamp agentpulse.session_id on every
+// span, grouping the run into a named conversation session.
+
+func scenarioSupportTriageSession(ctx context.Context, tracer trace.Tracer, projectID, sessionID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	sess := sessionAttrs(sessionID)
+
+	rootCtx, root := tracer.Start(ctx, "triage-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), sess,
+			withLLM("claude-haiku-4-5", "anthropic", rv(200, 600), rv(50, 150)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_customer_profile",
+		combine(baseAttrs(projectID, runID, "triage-agent"), sess, withTool("fetch_customer_profile"))...,
+	)(jitterD(30 * time.Millisecond))
+
+	span(tracer, rootCtx, "triage-agent/classify",
+		combine(baseAttrs(projectID, runID, "triage-agent"), sess,
+			withLLM("claude-haiku-4-5", "anthropic", rv(400, 800), rv(80, 160)))...,
+	)(jitterD(120 * time.Millisecond))
+
+	kbCtx, kbHandoff := tracer.Start(rootCtx, "handoff/kb-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), sess,
+			withHandoff("triage-agent", "kb-agent"),
+		)...),
+	)
+
+	span(tracer, kbCtx, "tool/search_knowledge_base",
+		combine(baseAttrs(projectID, runID, "kb-agent"), sess, withTool("search_knowledge_base"))...,
+	)(jitterD(80 * time.Millisecond))
+
+	in, out := randTokens(600, 1800, 200, 600)
+	span(tracer, kbCtx, "kb-agent/draft-response",
+		combine(baseAttrs(projectID, runID, "kb-agent"), sess,
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(300 * time.Millisecond))
+
+	kbHandoff.End()
+
+	in, out = randTokens(500, 1200, 150, 400)
+	span(tracer, rootCtx, "triage-agent/compose-reply",
+		combine(baseAttrs(projectID, runID, "triage-agent"), sess,
+			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(250 * time.Millisecond))
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
+}
+
+func scenarioSupportEscalationSession(ctx context.Context, tracer trace.Tracer, projectID, sessionID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	sess := sessionAttrs(sessionID)
+
+	rootCtx, root := tracer.Start(ctx, "triage-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), sess,
+			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(60, 120)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_customer_profile",
+		combine(baseAttrs(projectID, runID, "triage-agent"), sess, withTool("fetch_customer_profile"))...,
+	)(jitterD(25 * time.Millisecond))
+
+	span(tracer, rootCtx, "triage-agent/classify",
+		combine(baseAttrs(projectID, runID, "triage-agent"), sess,
+			withLLM("claude-haiku-4-5", "anthropic", rv(400, 900), rv(80, 180)))...,
+	)(jitterD(100 * time.Millisecond))
+
+	kbCtx, kbHandoff := tracer.Start(rootCtx, "handoff/kb-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), sess,
+			withHandoff("triage-agent", "kb-agent"),
+		)...),
+	)
+	span(tracer, kbCtx, "tool/search_knowledge_base",
+		combine(baseAttrs(projectID, runID, "kb-agent"), sess, withTool("search_knowledge_base"))...,
+	)(jitterD(90 * time.Millisecond))
+	span(tracer, kbCtx, "kb-agent/no-match",
+		combine(baseAttrs(projectID, runID, "kb-agent"), sess,
+			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(40, 80)))...,
+	)(jitterD(100 * time.Millisecond))
+	kbHandoff.End()
+
+	escCtx, escHandoff := tracer.Start(rootCtx, "handoff/escalation-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), sess,
+			withHandoff("triage-agent", "escalation-agent"),
+		)...),
+	)
+
+	span(tracer, escCtx, "tool/fetch_case_history",
+		combine(baseAttrs(projectID, runID, "escalation-agent"), sess, withTool("fetch_case_history"))...,
+	)(jitterD(40 * time.Millisecond))
+
+	span(tracer, escCtx, "tool/create_ticket",
+		combine(baseAttrs(projectID, runID, "escalation-agent"), sess, withTool("create_ticket"))...,
+	)(jitterD(60 * time.Millisecond))
+
+	escHandoff.End()
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
 }

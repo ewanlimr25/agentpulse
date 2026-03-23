@@ -26,7 +26,7 @@ func NewRunStore(conn driver.Conn) *RunStore {
 // total_tokens, total_cost_usd, error_count.
 const listRunsQuery = `
 SELECT
-    run_id, project_id, trace_id,
+    run_id, project_id, trace_id, session_id,
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
@@ -43,7 +43,7 @@ SELECT count() FROM run_metrics WHERE project_id = ?
 
 const getRunQuery = `
 SELECT
-    run_id, project_id, trace_id,
+    run_id, project_id, trace_id, session_id,
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
@@ -51,6 +51,18 @@ SELECT
 FROM run_metrics
 WHERE run_id = ?
 LIMIT 1
+`
+
+const listRunsBySessionQuery = `
+SELECT
+    run_id, project_id, trace_id, session_id,
+    min_start, max_end,
+    span_count, llm_calls, tool_calls,
+    input_tokens, output_tokens, total_tokens, total_cost_usd,
+    error_count
+FROM run_metrics
+WHERE project_id = ? AND session_id = ?
+ORDER BY min_start ASC
 `
 
 func (s *RunStore) List(ctx context.Context, projectID string, limit, offset int) ([]*domain.Run, error) {
@@ -97,11 +109,29 @@ func (s *RunStore) Get(ctx context.Context, runID string) (*domain.Run, error) {
 	return r, rows.Err()
 }
 
+func (s *RunStore) ListBySession(ctx context.Context, projectID, sessionID string) ([]*domain.Run, error) {
+	rows, err := s.conn.Query(ctx, listRunsBySessionQuery, projectID, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("run_store list_by_session query: %w", err)
+	}
+	defer rows.Close()
+
+	var runs []*domain.Run
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, r)
+	}
+	return runs, rows.Err()
+}
+
 func scanRun(rows driver.Rows) (*domain.Run, error) {
 	r := &domain.Run{}
 	var startTime, endTime time.Time
 	if err := rows.Scan(
-		&r.RunID, &r.ProjectID, &r.TraceID,
+		&r.RunID, &r.ProjectID, &r.TraceID, &r.SessionID,
 		&startTime, &endTime,
 		&r.SpanCount, &r.LLMCallCount, &r.ToolCallCount,
 		&r.TotalInputTokens, &r.TotalOutputTokens, &r.TotalTokens, &r.TotalCostUSD,

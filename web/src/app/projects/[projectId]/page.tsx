@@ -17,6 +17,7 @@ import { BudgetSection } from "@/components/budget/BudgetSection";
 import { AlertsSection } from "@/components/alerts/AlertsSection";
 import { ServicesSection } from "@/components/analytics/ServicesSection";
 import { EvalsSection } from "@/components/evals/EvalsSection";
+import { SessionsSection } from "@/components/sessions/SessionsSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
 
@@ -57,11 +58,12 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals">(
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals" | "sessions">(
     searchParams.get("tab") === "budget" ? "budget" :
     searchParams.get("tab") === "alerts" ? "alerts" :
     searchParams.get("tab") === "services" ? "services" :
-    searchParams.get("tab") === "evals" ? "evals" : "overview"
+    searchParams.get("tab") === "evals" ? "evals" :
+    searchParams.get("tab") === "sessions" ? "sessions" : "overview"
   );
 
   const queryClient = useQueryClient();
@@ -159,9 +161,10 @@ export default function ProjectPage({
             { key: "budget", label: "Budget" },
             { key: "alerts", label: "Alerts" },
             { key: "evals", label: "Evals" },
+            { key: "sessions", label: "Sessions" },
           ]}
           activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals")}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions")}
         />
 
         {activeTab === "overview" && (
@@ -183,6 +186,8 @@ export default function ProjectPage({
         {activeTab === "evals" && (
           <EvalsSection projectId={projectId} runs={runs} evalSummaries={evalSummaries ?? []} />
         )}
+
+        {activeTab === "sessions" && <SessionsSection projectId={projectId} />}
       </main>
     </div>
   );

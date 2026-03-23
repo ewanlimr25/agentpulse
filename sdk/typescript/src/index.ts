@@ -3,7 +3,11 @@ export type { AgentPulseConfig } from './config.js'
 
 export { initTracer, shutdown } from './tracer.js'
 
-export { setRunId, getRunId, resetRun, setProjectId, getProjectId } from './context.js'
+export {
+  setRunId, getRunId, resetRun,
+  setProjectId, getProjectId,
+  setSessionId, getSessionId, generateSessionId, resetSession,
+} from './context.js'
 
 export {
   llmCall,
