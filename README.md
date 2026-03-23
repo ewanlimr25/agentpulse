@@ -14,6 +14,8 @@ AgentPulse solves the fragmentation problem: teams today use three separate tool
 | **Framework-agnostic** | OTel-native, works with any SDK | Vendor lock-in |
 | **Unified view** | Cost + latency + quality in one run view | Separate tools |
 | **Budget enforcement** | Mid-run cost alerts and halt signals | Post-hoc only |
+| **Session tracking** | Groups runs into conversations with timeline | Not available |
+| **Loop detection** | Two-tier repeated-tool + topology cycle detection | Not available |
 
 ---
 
@@ -25,9 +27,8 @@ AgentPulse solves the fragmentation problem: teams today use three separate tool
 │  Budget enforcement · Cost alerts · SLOs        │
 ├─────────────────────────────────────────────────┤
 │  Layer 2: Storage + Query                       │
-│  ClickHouse (traces + metrics)                  │
-│  Postgres (topology graph + budget rules)       │
-│  MinIO / S3 (raw blobs)                         │
+│  ClickHouse (traces + metrics + sessions)       │
+│  Postgres (topology + budget + alerts + loops)  │
 ├─────────────────────────────────────────────────┤
 │  Layer 1: Collection (OTel-native)              │
 │  OTel Collector with agent semantic extensions  │
@@ -68,11 +69,11 @@ ClickHouse           Postgres
 |---|---|
 | Collector | Go · OpenTelemetry Collector (custom processors + exporters) |
 | Backend API | Go · Chi router · pgx · clickhouse-go |
-| Frontend | Next.js 16 · TypeScript · Tailwind CSS |
-| Graph viz | React Flow · Dagre layout |
-| Traces + metrics | ClickHouse 24.8 |
-| Topology + budgets | Postgres 16 |
-| Blob storage | MinIO (S3-compatible) |
+| Frontend | Next.js 15 · TypeScript · Tailwind CSS · Recharts · React Flow |
+| Traces + metrics + sessions | ClickHouse 24.8 |
+| Topology + budgets + alerts | Postgres 16 |
+| Python SDK | opentelemetry-sdk wrapper + LangChain integration |
+| TypeScript SDK | OTel JS SDK wrapper + Vercel AI SDK + OpenAI JS auto-instrumentation |
 
 ---
 
@@ -355,15 +356,33 @@ POST   /api/v1/projects
 GET    /api/v1/projects/:id
 
 GET    /api/v1/projects/:projectId/runs?limit=50&offset=0
+
+GET    /api/v1/projects/:projectId/sessions
+GET    /api/v1/projects/:projectId/sessions/:sessionId
+GET    /api/v1/projects/:projectId/sessions/:sessionId/runs
+
 GET    /api/v1/projects/:projectId/budget/rules
 POST   /api/v1/projects/:projectId/budget/rules
 PUT    /api/v1/projects/:projectId/budget/rules/:ruleId
 DELETE /api/v1/projects/:projectId/budget/rules/:ruleId
 GET    /api/v1/projects/:projectId/budget/alerts
 
+GET    /api/v1/projects/:projectId/alerts/rules
+POST   /api/v1/projects/:projectId/alerts/rules
+PUT    /api/v1/projects/:projectId/alerts/rules/:ruleId
+DELETE /api/v1/projects/:projectId/alerts/rules/:ruleId
+GET    /api/v1/projects/:projectId/alerts/events
+
+GET    /api/v1/projects/:projectId/analytics/tools?window=24h|7d
+GET    /api/v1/projects/:projectId/analytics/agents?window=24h|7d
+
+GET    /api/v1/projects/:projectId/evals/summary
+
 GET    /api/v1/runs/:runId
 GET    /api/v1/runs/:runId/spans
 GET    /api/v1/runs/:runId/topology
+GET    /api/v1/runs/:runId/evals
+GET    /api/v1/runs/:runId/loops
 
 WS     /api/v1/ws/alerts?project_id=:projectId
 ```
@@ -401,28 +420,45 @@ agentpulse/
 │   │   ├── agentsemanticproc/  # span classification + cost computation
 │   │   └── budgetenforceproc/  # budget threshold enforcement
 │   └── exporter/
-│       ├── clickhouseexporter/ # spans → ClickHouse
+│       ├── clickhouseexporter/ # spans → ClickHouse (with session_id)
 │       └── topologyexporter/   # spans → Postgres DAG
 ├── backend/                    # REST API (Go)
 │   └── internal/
-│       ├── api/                # Chi router + handlers
+│       ├── api/handler/        # Chi handlers (runs, sessions, budget, alerts, analytics, evals)
 │       ├── store/              # ClickHouse + Postgres repositories
-│       ├── domain/             # core types
-│       └── alert/              # WebSocket budget alert hub
-├── web/                        # Next.js 16 frontend
+│       ├── domain/             # core types (Run, Session, AlertRule, ...)
+│       ├── alerteval/          # 60s signal evaluator (error rate, latency, quality, loop)
+│       └── loopdetect/         # two-tier loop + topology cycle detection
+├── web/                        # Next.js 15 frontend
 │   └── src/
-│       ├── app/                # App Router pages
+│       ├── app/
+│       │   └── projects/[projectId]/
+│       │       ├── page.tsx            # tabs: Overview, Services, Budget, Alerts, Evals, Sessions
+│       │       ├── runs/[runId]/       # run detail (spans, topology, evals, loops)
+│       │       └── sessions/[sessionId]/  # session detail (metric cards, timeline, turns)
 │       ├── components/
-│       │   └── topology/       # React Flow DAG graph
-│       └── lib/                # API client + types
+│       │   ├── runs/           # RunRow, RunList, LoopBanner
+│       │   ├── sessions/       # SessionList, SessionTimeline, SessionBadge
+│       │   ├── topology/       # React Flow DAG graph
+│       │   ├── budget/         # budget rules + alert feed
+│       │   ├── alerts/         # signal-based alert rules + history
+│       │   ├── analytics/      # tool reliability + agent cost breakdown
+│       │   └── evals/          # eval summary + trend chart
+│       └── lib/                # API client + TypeScript types
+├── sdk/
+│   ├── python/                 # Python SDK (OTel wrapper + LangChain integration)
+│   └── typescript/             # TypeScript SDK (OTel JS + Vercel AI + OpenAI wrappers)
+├── eval/
+│   ├── enqueuer/               # polls ClickHouse, enqueues eval jobs
+│   └── worker/                 # Claude Haiku judge; scores relevance 0–1
 ├── migrations/
-│   ├── clickhouse/             # spans table, metrics agg, run_metrics view
-│   └── postgres/               # projects, topology, budget schema
+│   ├── clickhouse/             # spans, metrics_agg, run_metrics, span_evals, session_agg
+│   └── postgres/               # projects, topology, budget, alerts, loops
 ├── config/
 │   ├── agent_attributes.yaml   # OTel attribute extraction rules
 │   └── model_pricing.yaml      # per-token cost table (all major models)
 └── tools/
-    └── tracegen/               # synthetic trace generator CLI
+    └── tracegen/               # synthetic trace generator (5 demo projects + sessions)
 ```
 
 ---
