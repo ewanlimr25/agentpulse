@@ -25,6 +25,17 @@ langchain = [
 ]
 openai = [
     "openai>=1.30",
+    "openai-agents>=0.0.1",
+]
+crewai = [
+    "crewai>=0.55",
+]
+autogen = [
+    "autogen-agentchat>=0.4",
+    "packaging>=23.0",
+]
+llamaindex = [
+    "llama-index-core>=0.10.68",
 ]
 dev = [
     "pytest>=8.0",
@@ -47,6 +58,9 @@ addopts = "--cov=agentpulse --cov-report=term-missing --cov-fail-under=80"
 omit = [
     "*/integrations/langchain.py",
     "*/integrations/openai_agents.py",
+    "*/integrations/crewai.py",
+    "*/integrations/autogen.py",
+    "*/integrations/llamaindex.py",
 ]
 
 [tool.mypy]
