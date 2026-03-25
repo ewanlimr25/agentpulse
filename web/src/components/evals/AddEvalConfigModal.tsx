@@ -14,16 +14,20 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
   const [evalName, setEvalName] = useState("");
   const [spanKind, setSpanKind] = useState<"llm.call" | "tool.call">("llm.call");
   const [promptTemplate, setPromptTemplate] = useState("");
+  const [agentFilter, setAgentFilter] = useState(""); // comma-separated agent names
   const [error, setError] = useState("");
 
   const mutation = useMutation({
-    mutationFn: () =>
-      evalsApi.upsertConfig(projectId, {
+    mutationFn: () => {
+      const agents = agentFilter.split(",").map((s) => s.trim()).filter(Boolean);
+      return evalsApi.upsertConfig(projectId, {
         eval_name: `custom:${evalName.trim().toLowerCase().replace(/\s+/g, "_")}`,
         enabled: true,
         span_kind: spanKind,
         prompt_template: promptTemplate.trim(),
-      }),
+        ...(agents.length > 0 ? { scope_filter: { agent_name: agents } } : {}),
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["evalConfigs", projectId] });
       onClose();
@@ -82,6 +86,18 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Agent Filter <span className="font-normal">(optional)</span></label>
+            <input
+              type="text"
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              placeholder="researcher, writer"
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <p className="text-xs text-[var(--text-muted)] mt-1">Comma-separated agent names. Leave blank to run on all agents.</p>
           </div>
 
           <div>

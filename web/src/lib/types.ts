@@ -222,6 +222,7 @@ export interface EvalConfig {
   SpanKind: "llm.call" | "tool.call";
   PromptTemplate?: string;    // undefined = built-in; present = custom
   PromptVersion: number;
+  ScopeFilter?: Record<string, string[]>; // e.g. { agent_name: ["researcher"] }; absent = all agents
   CreatedAt: string;
   UpdatedAt: string;
 }

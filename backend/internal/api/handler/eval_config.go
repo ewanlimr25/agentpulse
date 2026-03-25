@@ -48,10 +48,11 @@ func (h *EvalConfigHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type evalConfigRequest struct {
-	EvalName       string  `json:"eval_name"`
-	Enabled        bool    `json:"enabled"`
-	SpanKind       string  `json:"span_kind"`
-	PromptTemplate *string `json:"prompt_template,omitempty"`
+	EvalName       string              `json:"eval_name"`
+	Enabled        bool                `json:"enabled"`
+	SpanKind       string              `json:"span_kind"`
+	PromptTemplate *string             `json:"prompt_template,omitempty"`
+	ScopeFilter    map[string][]string `json:"scope_filter,omitempty"`
 }
 
 func (req *evalConfigRequest) validate() string {
@@ -99,7 +100,8 @@ func (h *EvalConfigHandler) upsert(w http.ResponseWriter, r *http.Request) {
 		Enabled:        req.Enabled,
 		SpanKind:       req.SpanKind,
 		PromptTemplate: req.PromptTemplate,
-		PromptVersion:  1,
+		PromptVersion:  1, // store auto-increments on template change via ON CONFLICT
+		ScopeFilter:    req.ScopeFilter,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

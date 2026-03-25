@@ -76,9 +76,9 @@ func main() {
 
 	// ── Eval workers ──────────────────────────────────────────────────────
 	if cfg.AnthropicAPIKey != "" {
-		registry := eval.NewRegistry(nil) // starts with built-in types; configs are loaded per-tick by enqueuer
+		// Worker reloads registry from evalConfigStore every 60s to pick up new custom evals.
 		go eval.NewEnqueuer(chConn, evalJobStore, evalConfigStore).Run(ctx)
-		go eval.NewWorker(chConn, evalJobStore, evalStore, registry, cfg.AnthropicAPIKey).Run(ctx)
+		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, cfg.AnthropicAPIKey).Run(ctx)
 		slog.Info("eval worker started")
 	} else {
 		slog.Info("eval worker disabled (ANTHROPIC_API_KEY not set)")

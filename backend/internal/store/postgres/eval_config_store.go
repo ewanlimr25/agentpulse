@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -20,22 +21,26 @@ func NewEvalConfigStore(pool *pgxpool.Pool) *EvalConfigStore {
 }
 
 const evalConfigColumns = `id, project_id, eval_name, enabled, span_kind,
-	prompt_template, prompt_version, created_at, updated_at`
+	prompt_template, prompt_version, scope_filter, created_at, updated_at`
 
 func scanEvalConfig(row interface {
 	Scan(...any) error
 }) (*domain.EvalConfig, error) {
 	c := &domain.EvalConfig{}
 	var createdAt, updatedAt time.Time
+	var scopeFilterJSON []byte
 	err := row.Scan(
 		&c.ID, &c.ProjectID, &c.EvalName, &c.Enabled, &c.SpanKind,
-		&c.PromptTemplate, &c.PromptVersion, &createdAt, &updatedAt,
+		&c.PromptTemplate, &c.PromptVersion, &scopeFilterJSON, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
 	c.CreatedAt = createdAt.UTC()
 	c.UpdatedAt = updatedAt.UTC()
+	if len(scopeFilterJSON) > 0 && string(scopeFilterJSON) != "{}" {
+		_ = json.Unmarshal(scopeFilterJSON, &c.ScopeFilter)
+	}
 	return c, nil
 }
 
@@ -86,18 +91,28 @@ func (s *EvalConfigStore) ListAllEnabled(ctx context.Context) ([]*domain.EvalCon
 }
 
 func (s *EvalConfigStore) Upsert(ctx context.Context, cfg *domain.EvalConfig) error {
-	_, err := s.pool.Exec(ctx, `
+	scopeFilterJSON, err := json.Marshal(cfg.ScopeFilter)
+	if err != nil || cfg.ScopeFilter == nil {
+		scopeFilterJSON = []byte("{}")
+	}
+
+	_, err = s.pool.Exec(ctx, `
 		INSERT INTO project_eval_configs
-		  (id, project_id, eval_name, enabled, span_kind, prompt_template, prompt_version)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		  (id, project_id, eval_name, enabled, span_kind, prompt_template, prompt_version, scope_filter)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (project_id, eval_name) DO UPDATE SET
 		  enabled         = EXCLUDED.enabled,
 		  span_kind       = EXCLUDED.span_kind,
 		  prompt_template = EXCLUDED.prompt_template,
-		  prompt_version  = EXCLUDED.prompt_version,
+		  prompt_version  = CASE
+		    WHEN project_eval_configs.prompt_template IS DISTINCT FROM EXCLUDED.prompt_template
+		    THEN project_eval_configs.prompt_version + 1
+		    ELSE project_eval_configs.prompt_version
+		  END,
+		  scope_filter    = EXCLUDED.scope_filter,
 		  updated_at      = now()
 	`, cfg.ID, cfg.ProjectID, cfg.EvalName, cfg.Enabled, cfg.SpanKind,
-		cfg.PromptTemplate, cfg.PromptVersion)
+		cfg.PromptTemplate, cfg.PromptVersion, scopeFilterJSON)
 	if err != nil {
 		return fmt.Errorf("eval_config_store upsert: %w", err)
 	}

@@ -78,7 +78,7 @@ export const evalsApi = {
     apiFetch<RunEvalSummary[]>(`/api/v1/projects/${projectId}/evals/summary`),
   listConfigs: (projectId: string) =>
     apiFetch<EvalConfig[]>(`/api/v1/projects/${projectId}/evals/config`),
-  upsertConfig: (projectId: string, cfg: { eval_name: string; enabled: boolean; span_kind: string; prompt_template?: string }) =>
+  upsertConfig: (projectId: string, cfg: { eval_name: string; enabled: boolean; span_kind: string; prompt_template?: string; scope_filter?: Record<string, string[]> }) =>
     apiFetch<EvalConfig>(`/api/v1/projects/${projectId}/evals/config`, {
       method: "POST",
       body: JSON.stringify(cfg),

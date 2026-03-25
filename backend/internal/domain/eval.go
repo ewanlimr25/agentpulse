@@ -27,11 +27,12 @@ type RunEvalSummary struct {
 type EvalConfig struct {
 	ID             string
 	ProjectID      string
-	EvalName       string  // built-in name or "custom:<name>"
+	EvalName       string             // built-in name or "custom:<name>"
 	Enabled        bool
-	SpanKind       string  // "llm.call" or "tool.call"
-	PromptTemplate *string // nil = use built-in Go implementation
+	SpanKind       string             // "llm.call" or "tool.call"
+	PromptTemplate *string            // nil = use built-in Go implementation
 	PromptVersion  int
+	ScopeFilter    map[string][]string // nil = match all spans; {"agent_name": ["researcher"]} = only that agent
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

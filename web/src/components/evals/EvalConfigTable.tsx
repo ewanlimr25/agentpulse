@@ -106,8 +106,16 @@ export function EvalConfigTable({ projectId, configs, onAddCustom }: Props) {
                 <td className="px-4 py-3">
                   <span className="text-[var(--text)] font-medium">{evalLabel(cfg.EvalName)}</span>
                   {cfg.PromptTemplate && (
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-violet-950/40 border border-violet-700 text-violet-400">custom</span>
+                    <>
+                      <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-violet-950/40 border border-violet-700 text-violet-400">custom</span>
+                      <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] font-mono">v{cfg.PromptVersion}</span>
+                    </>
                   )}
+                  {cfg.ScopeFilter?.agent_name?.length ? (
+                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-amber-950/30 border border-amber-700/50 text-amber-400" title={cfg.ScopeFilter.agent_name.join(", ")}>
+                      {cfg.ScopeFilter.agent_name.length === 1 ? cfg.ScopeFilter.agent_name[0] : `${cfg.ScopeFilter.agent_name.length} agents`}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--text-muted)] font-mono">{cfg.SpanKind}</td>
                 <td className="px-4 py-3">
