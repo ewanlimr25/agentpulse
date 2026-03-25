@@ -1,0 +1,23 @@
+-- AgentPulse: recreate run_metrics VIEW to include user_id
+-- Uses CREATE OR REPLACE VIEW (atomic — no drop/recreate gap).
+-- user_id here is best-effort (anyLast). For cost attribution, query user_agg directly.
+
+CREATE OR REPLACE VIEW run_metrics AS
+SELECT
+    run_id,
+    project_id,
+    anyLast(trace_id)                              AS trace_id,
+    anyLast(session_id)                            AS session_id,
+    anyLast(user_id)                               AS user_id,
+    min(start_time)                                AS min_start,
+    max(end_time)                                  AS max_end,
+    count()                                        AS span_count,
+    countIf(agent_span_kind = 'llm.call')          AS llm_calls,
+    countIf(agent_span_kind = 'tool.call')         AS tool_calls,
+    sum(toUInt64(input_tokens))                    AS input_tokens,
+    sum(toUInt64(output_tokens))                   AS output_tokens,
+    sum(toUInt64(total_tokens))                    AS total_tokens,
+    sum(cost_usd)                                  AS total_cost_usd,
+    countIf(status_code = 'ERROR')                 AS error_count
+FROM spans
+GROUP BY run_id, project_id;

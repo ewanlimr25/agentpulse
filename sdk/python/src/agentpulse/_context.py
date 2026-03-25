@@ -2,8 +2,9 @@
 Internal context propagation for AgentPulse-specific values.
 
 OTel handles trace/span context automatically via contextvars. This module
-layers run_id and session_id on top — concepts AgentPulse uses to group spans
-into runs (single executions) and sessions (multi-turn conversations).
+layers run_id, session_id, and user_id on top — concepts AgentPulse uses to
+group spans into runs (single executions), sessions (multi-turn conversations),
+and attribute cost to individual users/customers.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Optional
 _run_id_var: ContextVar[Optional[str]] = ContextVar("agentpulse_run_id", default=None)
 _project_id_var: ContextVar[Optional[str]] = ContextVar("agentpulse_project_id", default=None)
 _session_id_var: ContextVar[Optional[str]] = ContextVar("agentpulse_session_id", default=None)
+_user_id_var: ContextVar[Optional[str]] = ContextVar("agentpulse_user_id", default=None)
 
 
 def set_run_id(run_id: str) -> None:
@@ -93,3 +95,44 @@ def reset_session() -> None:
     or in tests to isolate session state between test cases.
     """
     _session_id_var.set(None)
+
+
+def set_user_id(user_id: str) -> None:
+    """Pin a user_id for the current async context.
+
+    All spans created after this call will carry ``agentpulse.user_id``,
+    enabling per-user cost attribution in the UI.
+
+    The value must be an opaque identifier such as a UUID or internal
+    customer ID — NOT an email address or display name.
+
+    Args:
+        user_id: Opaque identifier for the end user (e.g. UUID, database PK).
+
+    Raises:
+        ValueError: If user_id contains ``@`` or whitespace characters.
+    """
+    if '@' in user_id or any(c.isspace() for c in user_id):
+        raise ValueError(
+            "user_id should be an opaque identifier (e.g. UUID or internal customer ID), "
+            "not an email or display name. Got a value containing '@' or whitespace."
+        )
+    _user_id_var.set(user_id)
+
+
+def get_user_id() -> Optional[str]:
+    """Return the current user_id, or None if not set.
+
+    Unlike run_id, user_id is never auto-generated — it returns None
+    until explicitly set with set_user_id().
+    """
+    return _user_id_var.get()
+
+
+def reset_user() -> None:
+    """Clear the current user_id.
+
+    Useful in tests to isolate user state between test cases, or when
+    processing requests on behalf of different users sequentially.
+    """
+    _user_id_var.set(None)

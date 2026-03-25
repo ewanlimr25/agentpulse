@@ -7,6 +7,7 @@ type costKey struct {
 	projectID string
 	runID     string
 	agentName string // empty for project/run-scoped rules
+	userID    string // empty for non-user-scoped rules
 }
 
 // accumulator tracks running cost per (project, run, agent) tuple.
@@ -42,6 +43,18 @@ func (a *accumulator) resetRun(projectID, runID string) {
 	defer a.mu.Unlock()
 	for k := range a.costs {
 		if k.projectID == projectID && k.runID == runID {
+			delete(a.costs, k)
+		}
+	}
+}
+
+// resetUser clears all cost buckets for a given user.
+// Called after a user-scoped halt alert to prevent repeated alerts.
+func (a *accumulator) resetUser(projectID, userID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k := range a.costs {
+		if k.projectID == projectID && k.userID == userID {
 			delete(a.costs, k)
 		}
 	}

@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -193,4 +193,13 @@ export const sessionsApi = {
     apiFetch<Session>(`/api/v1/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}`),
   listRuns: (projectId: string, sessionId: string) =>
     apiFetch<Run[]>(`/api/v1/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/runs`),
+};
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export const usersApi = {
+  list: (projectId: string, limit = 50, offset = 0) =>
+    apiFetch<UsersListResponse>(
+      `/api/v1/projects/${projectId}/users?limit=${limit}&offset=${offset}`
+    ),
 };

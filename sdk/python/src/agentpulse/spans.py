@@ -35,7 +35,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, StatusCode
 
 from agentpulse import attributes as attrs
-from agentpulse._context import get_project_id, get_run_id, get_session_id
+from agentpulse._context import get_project_id, get_run_id, get_session_id, get_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,9 @@ def _set_common_attrs(span: Span, span_kind: attrs.AgentSpanKind, agent_name: Op
     session_id = get_session_id()
     if session_id:
         span.set_attribute(attrs.SESSION_ID, session_id)
+    user_id = get_user_id()
+    if user_id:
+        span.set_attribute(attrs.USER_ID, user_id)
     if agent_name:
         span.set_attribute(attrs.AGENT_NAME, agent_name)
 

@@ -15,6 +15,7 @@ const (
 	scopeRun    budgetScope = "run"
 	scopeAgent  budgetScope = "agent"
 	scopeWindow budgetScope = "window"
+	scopeUser   budgetScope = "user"
 )
 
 // budgetAction mirrors domain.BudgetAction.
@@ -98,6 +99,45 @@ func actionToPast(action string) string {
 	default:
 		return action
 	}
+}
+
+// lastAlertForUser returns the time of the most recent budget alert for a
+// (rule, user) pair, or zero time if none. Used for window-based dedup of
+// user-scoped budget alerts instead of the in-memory alertDedup map.
+func (s *budgetStore) lastAlertForUser(ctx context.Context, ruleID, userID string) (time.Time, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT triggered_at
+		FROM budget_alerts
+		WHERE rule_id = $1 AND metadata->>'user_id' = $2
+		ORDER BY triggered_at DESC
+		LIMIT 1
+	`, ruleID, userID)
+	var t time.Time
+	if err := row.Scan(&t); err != nil {
+		if err.Error() == "no rows in result set" {
+			return time.Time{}, nil
+		}
+		return time.Time{}, fmt.Errorf("budget store last alert for user: %w", err)
+	}
+	return t, nil
+}
+
+// writeUserAlert inserts a budget_alerts row for a user-scoped rule, storing user_id in metadata.
+func (s *budgetStore) writeUserAlert(ctx context.Context, ruleID, projectID, userID string, cost, threshold float64, action string) error {
+	if s.pool == nil {
+		return nil // no-op in tests
+	}
+	metadata := fmt.Sprintf(`{"user_id": %q}`, userID)
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO budget_alerts
+		  (id, rule_id, project_id, run_id, triggered_at, current_cost, threshold_usd, action_taken, metadata)
+		VALUES
+		  (gen_random_uuid(), $1, $2, NULL, $3, $4, $5, $6, $7::jsonb)
+	`, ruleID, projectID, time.Now(), cost, threshold, actionToPast(action), metadata)
+	if err != nil {
+		return fmt.Errorf("budget store write user alert: %w", err)
+	}
+	return nil
 }
 
 // writeAlert inserts a budget_alerts row.

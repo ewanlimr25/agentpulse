@@ -15,17 +15,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// demoScenario is a scenario function that also accepts a userID for cost attribution.
+type demoScenario func(ctx context.Context, tracer trace.Tracer, projectID, userID string) error
+
 // demoProject describes a project to create and the runs to seed for it.
 type demoProject struct {
 	name      string
 	scenarios []weightedScenario
 	runs      int
+	users     []string // round-robin user IDs assigned to each run; empty = no user attribution
 }
 
 // weightedScenario pairs a scenario with a display name and error probability.
 type weightedScenario struct {
 	name     string
-	fn       scenario
+	fn       demoScenario
 	errorPct int // 0-100: probability this run ends with an error span
 }
 
@@ -48,13 +52,14 @@ type alertRule struct {
 	scopeFilter   string // tool name for tool_failure; empty otherwise
 }
 
-// sessionScenarioFn is a scenario that also accepts a sessionID.
-type sessionScenarioFn func(ctx context.Context, tracer trace.Tracer, projectID, sessionID string) error
+// sessionScenarioFn is a scenario that also accepts a sessionID and userID.
+type sessionScenarioFn func(ctx context.Context, tracer trace.Tracer, projectID, sessionID, userID string) error
 
 // sessionGroup defines a group of runs that share the same session_id,
-// simulating a multi-turn conversation.
+// simulating a multi-turn conversation. userID is the customer attributed to the session.
 type sessionGroup struct {
 	sessionID string
+	userID    string
 	turns     []sessionScenarioFn
 }
 
@@ -91,6 +96,7 @@ var demoProjects = []demoProjectWithRules{
 				{"support-triage", scenarioSupportTriage, 5},
 				{"support-escalation", scenarioSupportEscalation, 20},
 			},
+			users: []string{"user-alice", "user-bob", "user-carol"},
 		},
 		budgetRule: budgetRule{"per-run cost cap", 0.0005, "notify", "run"},
 		alertRules: []alertRule{
@@ -103,6 +109,7 @@ var demoProjects = []demoProjectWithRules{
 		sessionGroups: []sessionGroup{
 			{
 				sessionID: "session-billing-dispute-001",
+				userID:    "user-alice",
 				turns: []sessionScenarioFn{
 					scenarioSupportTriageSession,     // turn 1: initial contact, classified as billing
 					scenarioSupportTriageSession,     // turn 2: follow-up, still in triage
@@ -111,15 +118,17 @@ var demoProjects = []demoProjectWithRules{
 			},
 			{
 				sessionID: "session-tech-support-002",
+				userID:    "user-bob",
 				turns: []sessionScenarioFn{
-					scenarioSupportTriageSession,     // turn 1: initial report
-					scenarioSupportTriageSession,     // turn 2: kb search attempt
-					scenarioSupportTriageSession,     // turn 3: kb resolves issue
-					scenarioSupportTriageSession,     // turn 4: confirmation follow-up
+					scenarioSupportTriageSession, // turn 1: initial report
+					scenarioSupportTriageSession, // turn 2: kb search attempt
+					scenarioSupportTriageSession, // turn 3: kb resolves issue
+					scenarioSupportTriageSession, // turn 4: confirmation follow-up
 				},
 			},
 			{
 				sessionID: "session-shipping-003",
+				userID:    "user-carol",
 				turns: []sessionScenarioFn{
 					scenarioSupportTriageSession,     // turn 1: package not arrived
 					scenarioSupportEscalationSession, // turn 2: escalated, ticket created
@@ -136,6 +145,7 @@ var demoProjects = []demoProjectWithRules{
 				{"deep-research", scenarioDeepResearch, 0},
 				{"fact-check", scenarioFactCheck, 10},
 			},
+			users: []string{"user-researcher-1", "user-researcher-2"},
 		},
 		budgetRule: budgetRule{"research budget", 0.005, "notify", "run"},
 		alertRules: []alertRule{
@@ -153,6 +163,7 @@ var demoProjects = []demoProjectWithRules{
 				{"pr-review", scenarioPRReview, 15},
 				{"security-scan", scenarioSecurityScan, 5},
 			},
+			users: []string{"user-dev-1", "user-dev-2", "user-dev-3"},
 		},
 		budgetRule: budgetRule{"review cost cap", 0.002, "notify", "run"},
 		alertRules: []alertRule{
@@ -167,6 +178,7 @@ var demoProjects = []demoProjectWithRules{
 			scenarios: []weightedScenario{
 				{"pipeline-health", scenarioPipelineHealth, 25},
 			},
+			users: []string{"user-pipeline-1", "user-pipeline-2"},
 		},
 		budgetRule: budgetRule{"pipeline micro-cap", 0.0001, "halt", "run"},
 		alertRules: []alertRule{
@@ -218,8 +230,12 @@ func runDemo(ctx context.Context, tracer trace.Tracer, apiBase, endpoint string,
 
 		for i := range proj.runs {
 			ws := proj.scenarios[i%len(proj.scenarios)]
-			log.Printf("  run %2d/%-2d  scenario=%-22s  project=%s", i+1, proj.runs, ws.name, proj.name)
-			if err := ws.fn(ctx, tracer, projectID); err != nil {
+			userID := ""
+			if len(proj.users) > 0 {
+				userID = proj.users[i%len(proj.users)]
+			}
+			log.Printf("  run %2d/%-2d  scenario=%-22s  project=%s  user=%s", i+1, proj.runs, ws.name, proj.name, userID)
+			if err := ws.fn(ctx, tracer, projectID, userID); err != nil {
 				log.Printf("  scenario error: %v", err)
 			}
 			time.Sleep(delay)
@@ -227,10 +243,10 @@ func runDemo(ctx context.Context, tracer trace.Tracer, apiBase, endpoint string,
 
 		// Seed multi-turn session groups (if any configured for this project).
 		for _, sg := range dp.sessionGroups {
-			log.Printf("  seeding session %s (%d turns)", sg.sessionID, len(sg.turns))
+			log.Printf("  seeding session %s (%d turns)  user=%s", sg.sessionID, len(sg.turns), sg.userID)
 			for t, fn := range sg.turns {
 				log.Printf("    turn %d/%d  session=%s", t+1, len(sg.turns), sg.sessionID)
-				if err := fn(ctx, tracer, projectID, sg.sessionID); err != nil {
+				if err := fn(ctx, tracer, projectID, sg.sessionID, sg.userID); err != nil {
 					log.Printf("    session turn error: %v", err)
 				}
 				time.Sleep(delay)

@@ -7,6 +7,7 @@ export {
   setRunId, getRunId, resetRun,
   setProjectId, getProjectId,
   setSessionId, getSessionId, generateSessionId, resetSession,
+  setUserId, getUserId, resetUser,
 } from './context.js'
 
 export {

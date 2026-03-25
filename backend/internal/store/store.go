@@ -38,6 +38,17 @@ type SessionStore interface {
 	Get(ctx context.Context, projectID, sessionID string) (*domain.Session, error)
 }
 
+// UserStore reads per-user cost aggregates from the ClickHouse user_agg MV.
+// All methods require projectID to enforce project-scoped access at the query layer.
+// For authoritative cost attribution, always query user_agg directly — never join
+// through run_metrics (which uses anyLast(user_id) as a display-only best-effort).
+type UserStore interface {
+	// List returns users for a project ordered by total_cost_usd DESC, paginated.
+	List(ctx context.Context, projectID string, limit, offset int) ([]*domain.UserStats, error)
+	// Count returns the total number of distinct users for a project.
+	Count(ctx context.Context, projectID string) (int, error)
+}
+
 // TopologyStore reads topology graphs from Postgres.
 type TopologyStore interface {
 	// GetByRun returns the full DAG (nodes + edges) for a run.

@@ -43,8 +43,28 @@ func newTracesExporter(cfg *Config, logger *zap.Logger, ins inserter) *tracesExp
 	}
 }
 
-func (e *tracesExporter) Start(_ context.Context, _ component.Host) error {
+func (e *tracesExporter) Start(ctx context.Context, _ component.Host) error {
+	// Only probe the real ClickHouse inserter; skip when a test mock is injected.
+	if _, isReal := e.inserter.(*clickhouseInserter); isReal {
+		if err := e.probeSchema(ctx); err != nil {
+			return fmt.Errorf("clickhouse schema probe failed: %w", err)
+		}
+	}
 	go e.flushLoop()
+	return nil
+}
+
+// probeSchema verifies the spans table has the user_id column.
+// This prevents silent span data loss if migrations have not yet been applied.
+func (e *tracesExporter) probeSchema(ctx context.Context) error {
+	conn, err := connect(e.cfg)
+	if err != nil {
+		return fmt.Errorf("connecting to clickhouse: %w", err)
+	}
+	defer conn.Close()
+	if err := conn.Exec(ctx, fmt.Sprintf("SELECT user_id FROM %s.%s LIMIT 0", e.cfg.Database, e.cfg.Table)); err != nil {
+		return fmt.Errorf("user_id column missing from %s.%s — run migration 009_user_id.sql before starting the collector: %w", e.cfg.Database, e.cfg.Table, err)
+	}
 	return nil
 }
 
@@ -166,7 +186,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 
 	batch, err := conn.PrepareBatch(ctx, fmt.Sprintf(`INSERT INTO %s.%s (
 		trace_id, span_id, parent_span_id,
-		run_id, project_id, session_id,
+		run_id, project_id, session_id, user_id,
 		agent_span_kind, agent_name, model_id,
 		span_name, service_name, status_code, status_message,
 		start_time, end_time,
@@ -180,7 +200,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 	for _, r := range rows {
 		if err := batch.Append(
 			r.TraceID, r.SpanID, r.ParentSpanID,
-			r.RunID, r.ProjectID, r.SessionID,
+			r.RunID, r.ProjectID, r.SessionID, r.UserID,
 			r.AgentSpanKind, r.AgentName, r.ModelID,
 			r.SpanName, r.ServiceName, r.StatusCode, r.StatusMessage,
 			r.StartTime, r.EndTime,

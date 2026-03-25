@@ -16,6 +16,7 @@ import { context, createContextKey } from '@opentelemetry/api'
 const RUN_ID_KEY = createContextKey('agentpulse.run_id')
 const PROJECT_ID_KEY = createContextKey('agentpulse.project_id')
 const SESSION_ID_KEY = createContextKey('agentpulse.session_id')
+const USER_ID_KEY = createContextKey('agentpulse.user_id')
 
 function hasAsyncLocalStorage(): boolean {
   try {
@@ -31,6 +32,7 @@ function hasAsyncLocalStorage(): boolean {
 let _activeRunId: string | undefined
 let _activeProjectId: string | undefined
 let _activeSessionId: string | undefined
+let _activeUserId: string | undefined
 
 /**
  * Pin a specific runId for the current async context.
@@ -110,6 +112,40 @@ export function getSessionId(): string | undefined {
 /** Clear the current session ID. */
 export function resetSession(): void {
   _activeSessionId = undefined
+}
+
+/**
+ * Pin a user ID for the current async context.
+ * All spans created after this call will carry `agentpulse.user_id`,
+ * enabling per-user cost attribution in the UI.
+ *
+ * The value must be an opaque identifier such as a UUID or internal
+ * customer ID — NOT an email address or display name.
+ *
+ * @throws Error if userId contains '@' or whitespace.
+ */
+export function setUserId(userId: string): void {
+  if (userId.includes('@') || /\s/.test(userId)) {
+    throw new Error(
+      'userId should be an opaque identifier (e.g. UUID or internal customer ID), ' +
+      'not an email or display name.'
+    )
+  }
+  _activeUserId = userId
+}
+
+/**
+ * Return the current user ID, or undefined if not set.
+ * Unlike runId, user ID is never auto-generated.
+ */
+export function getUserId(): string | undefined {
+  const fromCtx = context.active().getValue(USER_ID_KEY) as string | undefined
+  return fromCtx ?? (_activeUserId || undefined)
+}
+
+/** Clear the current user ID. */
+export function resetUser(): void {
+  _activeUserId = undefined
 }
 
 function generateRunId(): string {

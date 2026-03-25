@@ -23,7 +23,7 @@ export function AddRuleModal({ projectId, isOpen, onClose }: Props) {
   const [name, setName] = useState("");
   const [thresholdUSD, setThresholdUSD] = useState("");
   const [action, setAction] = useState<"notify" | "halt">("notify");
-  const [scope, setScope] = useState<"run" | "agent">("run");
+  const [scope, setScope] = useState<"run" | "agent" | "user">("run");
   const [webhookURL, setWebhookURL] = useState("");
 
   function resetForm() {
@@ -154,11 +154,12 @@ export function AddRuleModal({ projectId, isOpen, onClose }: Props) {
             <select
               id="rule-scope"
               value={scope}
-              onChange={(e) => setScope(e.target.value as "run" | "agent")}
+              onChange={(e) => setScope(e.target.value as "run" | "agent" | "user")}
               className={inputClass}
             >
               <option value="run">run</option>
               <option value="agent">agent</option>
+              <option value="user">user</option>
             </select>
           </div>
 

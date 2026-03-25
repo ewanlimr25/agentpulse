@@ -35,7 +35,7 @@ func withToolCall(toolName, input, output string) []attribute.KeyValue {
 //
 // The identical (span_name, tool.input, tool.output) across all 3 iterations
 // triggers Tier 1 high-confidence detection.
-func scenarioStuckSearchLoop(ctx context.Context, tracer trace.Tracer, projectID string) error {
+func scenarioStuckSearchLoop(ctx context.Context, tracer trace.Tracer, projectID, userID string) error {
 	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
 
 	rootCtx, root := tracer.Start(ctx, "research-agent",
@@ -112,7 +112,7 @@ func scenarioStuckSearchLoop(ctx context.Context, tracer trace.Tracer, projectID
 //   deployment-monitor (root llm)
 //     └─ monitor/should-retry   (llm — "still waiting?")
 //         └─ tool/check_deployment_status  (same input, slowly changing output)
-func scenarioRapidPollLoop(ctx context.Context, tracer trace.Tracer, projectID string) error {
+func scenarioRapidPollLoop(ctx context.Context, tracer trace.Tracer, projectID, userID string) error {
 	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
 
 	rootCtx, root := tracer.Start(ctx, "deployment-monitor",

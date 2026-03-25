@@ -18,8 +18,10 @@ import (
 const (
 	attrCostUSD   = "agentpulse.cost_usd"
 	attrRunID     = "agentpulse.run_id"
-	attrProjectID = "agentpulse.project.id"
+	attrProjectID = "agentpulse.project_id"
 	attrAgentName = "agentpulse.agent.name"
+
+	attrUserID    = "agentpulse.user_id"
 
 	// attrBudgetHalted is stamped onto spans when a halt rule fires,
 	// so SDK wrappers can detect mid-run budget breaches.
@@ -72,11 +74,12 @@ func (p *budgetProcessor) Shutdown(_ context.Context) error {
 
 // ProcessTraces accumulates cost per span and checks rules after each batch.
 func (p *budgetProcessor) ProcessTraces(ctx context.Context, td ptrace.Traces) (ptrace.Traces, error) {
-	// Collect (runID, projectID, agentName, cost) tuples from this batch.
+	// Collect (runID, projectID, agentName, userID, cost) tuples from this batch.
 	type spanCost struct {
 		projectID string
 		runID     string
 		agentName string
+		userID    string
 		cost      float64
 	}
 	var costs []spanCost
@@ -103,7 +106,8 @@ func (p *budgetProcessor) ProcessTraces(ctx context.Context, td ptrace.Traces) (
 					continue
 				}
 				agentName := getString(attrs, attrAgentName)
-				costs = append(costs, spanCost{projectID, runID, agentName, cost})
+				userID := getString(attrs, attrUserID)
+				costs = append(costs, spanCost{projectID, runID, agentName, userID, cost})
 			}
 		}
 	}
@@ -117,6 +121,11 @@ func (p *budgetProcessor) ProcessTraces(ctx context.Context, td ptrace.Traces) (
 		var agentTotal float64
 		if sc.agentName != "" {
 			agentTotal = p.acc.add(costKey{projectID: sc.projectID, runID: sc.runID, agentName: sc.agentName}, sc.cost)
+		}
+		// User-scoped accumulation
+		var userTotal float64
+		if sc.userID != "" {
+			userTotal = p.acc.add(costKey{projectID: sc.projectID, userID: sc.userID}, sc.cost)
 		}
 
 		p.mu.RLock()
@@ -136,6 +145,11 @@ func (p *budgetProcessor) ProcessTraces(ctx context.Context, td ptrace.Traces) (
 					continue
 				}
 				accumulated = agentTotal
+			case scopeUser:
+				if sc.userID == "" {
+					continue
+				}
+				accumulated = userTotal
 			default:
 				continue
 			}
@@ -143,15 +157,36 @@ func (p *budgetProcessor) ProcessTraces(ctx context.Context, td ptrace.Traces) (
 			if accumulated < rule.thresholdUSD {
 				continue
 			}
-			if !p.dedup.check(rule.id, sc.runID) {
+
+			var isDuplicate bool
+			if rule.scope == scopeUser {
+				// User-scoped rules use DB-backed dedup so alerts re-fire in subsequent windows.
+				dedupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				lastFired, err := p.store.lastAlertForUser(dedupCtx, rule.id, sc.userID)
+				cancel()
+				if err != nil {
+					p.logger.Warn("user alert dedup check failed", zap.Error(err))
+					isDuplicate = true // fail safe: don't double-fire
+				} else if rule.windowSeconds != nil && !lastFired.IsZero() {
+					window := time.Duration(*rule.windowSeconds) * time.Second
+					isDuplicate = time.Since(lastFired) < window
+				}
+			} else {
+				isDuplicate = !p.dedup.check(rule.id, sc.runID)
+			}
+			if isDuplicate {
 				continue
 			}
 
 			// Threshold breached — fire alert.
-			runIDPtr := &sc.runID
-			go p.fireAlert(rule, sc.projectID, runIDPtr, accumulated)
+			if rule.scope == scopeUser {
+				go p.fireUserAlert(rule, sc.projectID, sc.userID, accumulated)
+			} else {
+				runIDPtr := &sc.runID
+				go p.fireAlert(rule, sc.projectID, runIDPtr, accumulated)
+			}
 
-			if rule.action == actionHalt {
+			if rule.action == actionHalt && rule.scope != scopeUser {
 				haltedRuns[sc.runID] = true
 			}
 		}
@@ -206,6 +241,34 @@ func (p *budgetProcessor) fireAlert(rule budgetRule, projectID string, runID *st
 
 	if rule.action == actionHalt && runID != nil {
 		p.acc.resetRun(projectID, *runID)
+	}
+}
+
+// fireUserAlert writes a user-scoped budget alert to Postgres and calls the webhook.
+// Note: user_id is intentionally excluded from webhook payloads to avoid PII leakage.
+func (p *budgetProcessor) fireUserAlert(rule budgetRule, projectID, userID string, cost float64) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	p.logger.Info("user budget threshold breached",
+		zap.String("rule", rule.name),
+		zap.String("project_id", projectID),
+		zap.Float64("cost_usd", cost),
+		zap.Float64("threshold_usd", rule.thresholdUSD),
+		zap.String("action", string(rule.action)),
+	)
+
+	if err := p.store.writeUserAlert(ctx, rule.id, projectID, userID, cost, rule.thresholdUSD, string(rule.action)); err != nil {
+		p.logger.Error("failed to write user budget alert", zap.Error(err))
+	}
+
+	if rule.webhookURL != nil && *rule.webhookURL != "" {
+		// Webhook payload deliberately omits user_id to avoid PII leakage to external URLs.
+		p.callWebhook(*rule.webhookURL, rule, projectID, "", cost)
+	}
+
+	if rule.action == actionHalt {
+		p.acc.resetUser(projectID, userID)
 	}
 }
 

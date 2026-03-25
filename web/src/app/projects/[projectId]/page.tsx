@@ -18,6 +18,7 @@ import { AlertsSection } from "@/components/alerts/AlertsSection";
 import { ServicesSection } from "@/components/analytics/ServicesSection";
 import { EvalsSection } from "@/components/evals/EvalsSection";
 import { SessionsSection } from "@/components/sessions/SessionsSection";
+import { UsersSection } from "@/components/users/UsersSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
 
@@ -58,12 +59,13 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals" | "sessions">(
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users">(
     searchParams.get("tab") === "budget" ? "budget" :
     searchParams.get("tab") === "alerts" ? "alerts" :
     searchParams.get("tab") === "services" ? "services" :
     searchParams.get("tab") === "evals" ? "evals" :
-    searchParams.get("tab") === "sessions" ? "sessions" : "overview"
+    searchParams.get("tab") === "sessions" ? "sessions" :
+    searchParams.get("tab") === "users" ? "users" : "overview"
   );
 
   const queryClient = useQueryClient();
@@ -162,9 +164,10 @@ export default function ProjectPage({
             { key: "alerts", label: "Alerts" },
             { key: "evals", label: "Evals" },
             { key: "sessions", label: "Sessions" },
+            { key: "users", label: "Users" },
           ]}
           activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions")}
+          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users")}
         />
 
         {activeTab === "overview" && (
@@ -188,6 +191,8 @@ export default function ProjectPage({
         )}
 
         {activeTab === "sessions" && <SessionsSection projectId={projectId} />}
+
+        {activeTab === "users" && <UsersSection projectId={projectId} />}
       </main>
     </div>
   );

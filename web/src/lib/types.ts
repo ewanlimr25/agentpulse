@@ -33,6 +33,7 @@ export interface Run {
   Status: "ok" | "error";
   LoopDetected?: boolean;
   SessionID?: string;
+  UserID?: string;
 }
 
 export interface Session {
@@ -50,6 +51,27 @@ export interface Session {
 
 export interface SessionsListResponse {
   sessions: Session[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface UserStats {
+  UserID: string;
+  ProjectID: string;
+  RunCount: number;
+  TotalCostUSD: number;
+  TotalTokens: number;
+  InputTokens: number;
+  OutputTokens: number;
+  ErrorCount: number;
+  CostPercent: number;
+  FirstSeenAt: string;
+  LastSeenAt: string;
+}
+
+export interface UsersListResponse {
+  users: UserStats[];
   total: number;
   limit: number;
   offset: number;
@@ -148,7 +170,7 @@ export interface BudgetRule {
   Name: string;
   ThresholdUSD: number;
   Action: "notify" | "halt";
-  Scope: "run" | "agent" | "window";
+  Scope: "run" | "agent" | "window" | "user";
   WindowSeconds?: number;
   WebhookURL?: string;
   Enabled: boolean;

@@ -92,6 +92,15 @@ field_extraction:
     - "agentpulse.project.id"
     - "agentpulse.project_id"
 
+  session_id:
+    - "agentpulse.session_id"         # AgentPulse explicit
+    - "agentpulse.session.id"         # Alternative convention
+
+  user_id:
+    - "agentpulse.user_id"            # AgentPulse explicit
+    - "agentpulse.user.id"            # Alternative AgentPulse convention
+    - "enduser.id"                    # OTel semantic convention for end-user identity
+
 # ── Cost computation ──────────────────────────────────────────────────────────
 #
 # How to compute cost when not provided explicitly.

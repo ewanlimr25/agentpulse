@@ -19,6 +19,8 @@ const (
 	attrCostUSD       = "agentpulse.cost_usd"
 	attrRunID         = "agentpulse.run_id"
 	attrProjectID     = "agentpulse.project_id"
+	attrUserID        = "agentpulse.user_id"
+	attrSessionID     = "agentpulse.session_id"
 )
 
 // semanticProcessor enriches OTel spans with agent semantic fields.
@@ -92,6 +94,27 @@ func (p *semanticProcessor) enrichSpan(span ptrace.Span) {
 	// 7. Propagate project_id if present
 	if projectID := p.extractField("project_id", attrs); projectID != "" {
 		attrs.PutStr(attrProjectID, projectID)
+	}
+
+	// 8. Propagate session_id if present
+	if sessionID := p.extractField("session_id", attrs); sessionID != "" {
+		attrs.PutStr(attrSessionID, sessionID)
+	}
+
+	// 9. Propagate user_id if present; sanitize by rejecting values > 128 chars
+	//    or containing '@' (likely PII email addresses).
+	if userID := p.extractField("user_id", attrs); userID != "" {
+		if len(userID) <= 128 && !strings.Contains(userID, "@") {
+			attrs.PutStr(attrUserID, userID)
+		} else {
+			prefix := userID
+			if len(prefix) > 20 {
+				prefix = prefix[:20]
+			}
+			p.logger.Warn("user_id rejected: too long or contains '@' (use an opaque identifier, not an email)",
+				zap.String("user_id_prefix", prefix),
+			)
+		}
 	}
 }
 

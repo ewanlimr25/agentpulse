@@ -25,10 +25,13 @@ from agentpulse._context import (
     generate_session_id,
     get_run_id,
     get_session_id,
+    get_user_id,
     reset_run,
     reset_session,
+    reset_user,
     set_run_id,
     set_session_id,
+    set_user_id,
 )
 from agentpulse._version import __version__
 from agentpulse.config import AgentPulseConfig, load_config
@@ -74,6 +77,9 @@ __all__ = [
     "get_session_id",
     "generate_session_id",
     "reset_session",
+    "set_user_id",
+    "get_user_id",
+    "reset_user",
     # Meta
     "__version__",
 ]

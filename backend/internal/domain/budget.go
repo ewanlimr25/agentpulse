@@ -17,6 +17,7 @@ const (
 	BudgetScopeRun    BudgetScope = "run"
 	BudgetScopeAgent  BudgetScope = "agent"
 	BudgetScopeWindow BudgetScope = "window"
+	BudgetScopeUser   BudgetScope = "user"
 )
 
 // BudgetRule defines a cost threshold for a project.

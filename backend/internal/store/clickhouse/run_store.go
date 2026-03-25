@@ -26,7 +26,7 @@ func NewRunStore(conn driver.Conn) *RunStore {
 // total_tokens, total_cost_usd, error_count.
 const listRunsQuery = `
 SELECT
-    run_id, project_id, trace_id, session_id,
+    run_id, project_id, trace_id, session_id, user_id,
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
@@ -43,7 +43,7 @@ SELECT count() FROM run_metrics WHERE project_id = ?
 
 const getRunQuery = `
 SELECT
-    run_id, project_id, trace_id, session_id,
+    run_id, project_id, trace_id, session_id, user_id,
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
@@ -55,7 +55,7 @@ LIMIT 1
 
 const listRunsBySessionQuery = `
 SELECT
-    run_id, project_id, trace_id, session_id,
+    run_id, project_id, trace_id, session_id, user_id,
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
@@ -131,7 +131,7 @@ func scanRun(rows driver.Rows) (*domain.Run, error) {
 	r := &domain.Run{}
 	var startTime, endTime time.Time
 	if err := rows.Scan(
-		&r.RunID, &r.ProjectID, &r.TraceID, &r.SessionID,
+		&r.RunID, &r.ProjectID, &r.TraceID, &r.SessionID, &r.UserID,
 		&startTime, &endTime,
 		&r.SpanCount, &r.LLMCallCount, &r.ToolCallCount,
 		&r.TotalInputTokens, &r.TotalOutputTokens, &r.TotalTokens, &r.TotalCostUSD,

@@ -30,6 +30,10 @@ type Run struct {
 	// SessionID groups this run into a multi-turn session (empty if not set).
 	SessionID string
 
+	// UserID is the end-user identifier extracted from spans via anyLast().
+	// Best-effort for display purposes — use user_agg for authoritative cost attribution.
+	UserID string
+
 	// LoopDetected is true when the background loop detector has flagged this run.
 	LoopDetected bool
 }
