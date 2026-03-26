@@ -181,3 +181,94 @@ export function memoryWrite<T>(
     options.runId,
   )
 }
+
+// ── MCP tool call ─────────────────────────────────────────────────────────────
+
+export interface McpToolCallOptions {
+  serverName: string
+  toolName: string
+  agentName?: string
+  spanName?: string
+  runId?: string
+}
+
+/** Wrap an MCP tool invocation in an mcp.tool_call span.
+ *
+ * Also sets tool.name so existing tool analytics capture MCP tool calls.
+ */
+export function mcpToolCall<T>(
+  options: McpToolCallOptions,
+  fn: (span: Span) => T | Promise<T>,
+): Promise<T> {
+  const name = options.spanName ?? `mcp.${options.toolName}`
+  return withSpan(
+    name,
+    attrs.MCP_TOOL_CALL,
+    (span) => {
+      span.setAttribute(attrs.MCP_SERVER_NAME, options.serverName)
+      span.setAttribute(attrs.MCP_TOOL_NAME, options.toolName)
+      span.setAttribute(attrs.TOOL_NAME, options.toolName)
+    },
+    fn,
+    options.agentName,
+    options.runId,
+  )
+}
+
+// ── MCP list tools ─────────────────────────────────────────────────────────────
+
+export interface McpListToolsOptions {
+  serverName: string
+  agentName?: string
+  spanName?: string
+  runId?: string
+}
+
+/** Wrap an MCP tool discovery call in an mcp.list_tools span.
+ *
+ * Use recordMcpDiscovery() inside fn to attach discovered tool names.
+ */
+export function mcpListTools<T>(
+  options: McpListToolsOptions,
+  fn: (span: Span) => T | Promise<T>,
+): Promise<T> {
+  const name = options.spanName ?? 'mcp.list_tools'
+  return withSpan(
+    name,
+    attrs.MCP_LIST_TOOLS,
+    (span) => span.setAttribute(attrs.MCP_SERVER_NAME, options.serverName),
+    fn,
+    options.agentName,
+    options.runId,
+  )
+}
+
+// ── MCP recording helpers ─────────────────────────────────────────────────────
+
+export interface McpToolResultOptions {
+  inputSchema?: string
+  outputSchema?: string
+  toolInput?: string
+  toolOutput?: string
+}
+
+/** Attach MCP tool call data to an active span. */
+export function recordMcpToolResult(span: Span, opts: McpToolResultOptions): void {
+  if (opts.inputSchema != null) span.setAttribute(attrs.MCP_INPUT_SCHEMA, opts.inputSchema)
+  if (opts.outputSchema != null) span.setAttribute(attrs.MCP_OUTPUT_SCHEMA, opts.outputSchema)
+  if (opts.toolInput != null) span.setAttribute('tool.input', opts.toolInput)
+  if (opts.toolOutput != null) span.setAttribute('tool.output', opts.toolOutput)
+}
+
+export interface McpDiscoveryOptions {
+  toolCount: number
+  discoveredTools: string[]
+}
+
+/** Attach tool discovery data to an mcp.list_tools span. */
+export function recordMcpDiscovery(span: Span, opts: McpDiscoveryOptions): void {
+  span.setAttribute(attrs.MCP_TOOL_COUNT, String(opts.toolCount))
+  if (opts.discoveredTools.length > 0) {
+    span.setAttribute(attrs.MCP_DISCOVERED_TOOLS, opts.discoveredTools.join(','))
+  }
+}

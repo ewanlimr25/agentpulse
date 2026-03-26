@@ -9,7 +9,8 @@
 # ── Span kind classification ──────────────────────────────────────────────────
 #
 # Determines the agent_span_kind field stored in ClickHouse.
-# Values: llm.call | tool.call | agent.handoff | memory.read | memory.write | unknown
+# Values: llm.call | tool.call | agent.handoff | memory.read | memory.write |
+#         mcp.tool_call | mcp.list_tools | unknown
 
 span_kind_detection:
   # OTel GenAI SIG: gen_ai.operation.name is the current convention
@@ -24,6 +25,8 @@ span_kind_detection:
       "transfer": "agent.handoff"
       "memory_read": "memory.read"
       "memory_write": "memory.write"
+      "mcp_tool_call": "mcp.tool_call"
+      "mcp_list_tools": "mcp.list_tools"
 
   # AgentPulse explicit override — set this in your spans for unambiguous classification
   - attribute: "agentpulse.span.kind"
@@ -39,6 +42,8 @@ span_kind_detection:
       "agent.handoff": "agent.handoff"
       "memory.read": "memory.read"
       "memory.write": "memory.write"
+      "mcp.tool_call": "mcp.tool_call"
+      "mcp.list_tools": "mcp.list_tools"
 
 # ── Field extraction ──────────────────────────────────────────────────────────
 #
@@ -100,6 +105,26 @@ field_extraction:
     - "agentpulse.user_id"            # AgentPulse explicit
     - "agentpulse.user.id"            # Alternative AgentPulse convention
     - "enduser.id"                    # OTel semantic convention for end-user identity
+
+  mcp_server_name:
+    - "agentpulse.mcp.server_name"
+    - "mcp.server.name"
+
+  mcp_tool_name:
+    - "agentpulse.mcp.tool_name"
+    - "mcp.tool.name"
+
+  mcp_input_schema:
+    - "agentpulse.mcp.input_schema"
+
+  mcp_output_schema:
+    - "agentpulse.mcp.output_schema"
+
+  mcp_tool_count:
+    - "agentpulse.mcp.tool_count"
+
+  mcp_discovered_tools:
+    - "agentpulse.mcp.discovered_tools"
 
 # ── Cost computation ──────────────────────────────────────────────────────────
 #

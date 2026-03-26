@@ -17,6 +17,7 @@ const nodeColors: Record<NodeType, { bg: string; border: string; text: string }>
   llm: { bg: "bg-violet-950/70", border: "border-violet-600", text: "text-violet-300" },
   tool: { bg: "bg-sky-950/70", border: "border-sky-600", text: "text-sky-300" },
   memory: { bg: "bg-amber-950/70", border: "border-amber-600", text: "text-amber-300" },
+  mcp: { bg: "bg-teal-950/70", border: "border-teal-600", text: "text-teal-300" },
 };
 
 const nodeIcons: Record<NodeType, string> = {
@@ -24,6 +25,7 @@ const nodeIcons: Record<NodeType, string> = {
   llm: "💬",
   tool: "🔧",
   memory: "🧠",
+  mcp: "🔌",
 };
 
 const statusDot: Record<NodeStatus, string> = {
@@ -55,6 +57,11 @@ export function AgentNode({ data }: { data: NodeData }) {
       {data.nodeType === "llm" && data.metadata?.model_id && (
         <p className="text-xs text-[var(--text-muted)] truncate max-w-[180px] mt-0.5">
           {data.metadata.model_id}
+        </p>
+      )}
+      {data.nodeType === "mcp" && data.metadata?.mcp_server_name && (
+        <p className="text-xs text-[var(--text-muted)] truncate max-w-[180px] mt-0.5">
+          {data.metadata.mcp_server_name}
         </p>
       )}
 

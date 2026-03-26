@@ -16,6 +16,10 @@ export {
   handoff,
   memoryRead,
   memoryWrite,
+  mcpToolCall,
+  mcpListTools,
+  recordMcpToolResult,
+  recordMcpDiscovery,
 } from './spans.js'
 export type {
   LlmCallOptions,
@@ -23,6 +27,10 @@ export type {
   HandoffOptions,
   MemoryReadOptions,
   MemoryWriteOptions,
+  McpToolCallOptions,
+  McpListToolsOptions,
+  McpToolResultOptions,
+  McpDiscoveryOptions,
 } from './spans.js'
 
 export { recordLlmUsage } from './usage.js'

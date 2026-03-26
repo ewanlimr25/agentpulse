@@ -106,6 +106,7 @@ func spanToEnriched(span ptrace.Span, resource pcommon.Resource, projectID strin
 		AgentName:     strAttr(attrs, "agentpulse.agent.name"),
 		ModelID:       strAttr(attrs, "agentpulse.model_id"),
 		ToolName:      strAttr(attrs, "tool.name"),
+		MCPServerName: strAttr(attrs, "agentpulse.mcp.server_name"),
 		CostUSD:       floatAttr(attrs, "agentpulse.cost_usd"),
 		InputTokens:   uint32(intAttr(attrs, "agentpulse.input_tokens")),
 		OutputTokens:  uint32(intAttr(attrs, "agentpulse.output_tokens")),

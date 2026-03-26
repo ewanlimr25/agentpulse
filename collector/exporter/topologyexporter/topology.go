@@ -17,6 +17,7 @@ type enrichedSpan struct {
 	AgentName     string
 	ModelID       string
 	ToolName      string
+	MCPServerName string
 
 	CostUSD     float64
 	InputTokens uint32
@@ -61,6 +62,7 @@ const (
 	nodeTypeTool   = "tool"
 	nodeTypeLLM    = "llm"
 	nodeTypeMemory = "memory"
+	nodeTypeMCP    = "mcp"
 
 	edgeTypeInvocation   = "invocation"
 	edgeTypeHandoff      = "handoff"
@@ -150,6 +152,9 @@ func spanToNode(s *enrichedSpan) (topologyNode, bool) {
 	if s.AgentName != "" {
 		meta["agent_name"] = s.AgentName
 	}
+	if s.MCPServerName != "" {
+		meta["mcp_server_name"] = s.MCPServerName
+	}
 
 	node := topologyNode{
 		SpanID:     s.SpanID,
@@ -208,6 +213,17 @@ func classifyNode(s *enrichedSpan) (nodeType, nodeName string, ok bool) {
 
 	case "memory.read", "memory.write":
 		return nodeTypeMemory, "memory", true
+
+	case "mcp.tool_call":
+		name := s.ToolName
+		if name == "" {
+			name = s.SpanName
+		}
+		return nodeTypeMCP, name, true
+
+	case "mcp.list_tools":
+		name := s.SpanName
+		return nodeTypeMCP, name, true
 
 	default:
 		if s.AgentName != "" {

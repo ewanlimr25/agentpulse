@@ -6,6 +6,8 @@ export type AgentSpanKind =
   | "agent.handoff"
   | "memory.read"
   | "memory.write"
+  | "mcp.tool_call"
+  | "mcp.list_tools"
   | "unknown";
 
 export interface Project {
@@ -125,7 +127,7 @@ export interface Span {
   TtftMs?: number;
 }
 
-export type NodeType = "agent" | "tool" | "llm" | "memory";
+export type NodeType = "agent" | "tool" | "llm" | "memory" | "mcp";
 export type NodeStatus = "ok" | "error" | "running" | "unset";
 export type EdgeType = "invocation" | "handoff" | "memory_access";
 

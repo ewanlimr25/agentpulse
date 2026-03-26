@@ -22,6 +22,14 @@ const (
 	attrUserID        = "agentpulse.user_id"
 	attrSessionID     = "agentpulse.session_id"
 	attrTtftMs        = "agentpulse.ttft_ms"
+
+	// MCP (Model Context Protocol) attributes
+	attrMCPServerName     = "agentpulse.mcp.server_name"
+	attrMCPToolName       = "agentpulse.mcp.tool_name"
+	attrMCPInputSchema    = "agentpulse.mcp.input_schema"
+	attrMCPOutputSchema   = "agentpulse.mcp.output_schema"
+	attrMCPToolCount      = "agentpulse.mcp.tool_count"
+	attrMCPDiscoveredTools = "agentpulse.mcp.discovered_tools"
 )
 
 // semanticProcessor enriches OTel spans with agent semantic fields.
@@ -121,6 +129,31 @@ func (p *semanticProcessor) enrichSpan(span ptrace.Span) {
 	// 10. Compute TTFT from stream.first_token event or SDK-stamped attribute.
 	if ttft := p.computeTTFT(span); ttft > 0 {
 		attrs.PutDouble(attrTtftMs, ttft)
+	}
+
+	// 11. For MCP spans, extract and propagate MCP-specific attributes.
+	spanKind, _ := attrs.Get(attrAgentSpanKind)
+	if strings.HasPrefix(spanKind.Str(), "mcp.") {
+		if v := p.extractField("mcp_server_name", attrs); v != "" {
+			attrs.PutStr(attrMCPServerName, v)
+		}
+		if v := p.extractField("mcp_tool_name", attrs); v != "" {
+			attrs.PutStr(attrMCPToolName, v)
+			// Also set tool.name so existing tool analytics capture MCP tools
+			attrs.PutStr("tool.name", v)
+		}
+		if v := p.extractField("mcp_input_schema", attrs); v != "" {
+			attrs.PutStr(attrMCPInputSchema, v)
+		}
+		if v := p.extractField("mcp_output_schema", attrs); v != "" {
+			attrs.PutStr(attrMCPOutputSchema, v)
+		}
+		if v := p.extractField("mcp_tool_count", attrs); v != "" {
+			attrs.PutStr(attrMCPToolCount, v)
+		}
+		if v := p.extractField("mcp_discovered_tools", attrs); v != "" {
+			attrs.PutStr(attrMCPDiscoveredTools, v)
+		}
 	}
 }
 

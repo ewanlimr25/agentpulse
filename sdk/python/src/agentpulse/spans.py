@@ -316,6 +316,152 @@ def memory_write_ctx(
             raise
 
 
+# ── MCP tool call ─────────────────────────────────────────────────────────────
+
+def mcp_tool_call(
+    server_name: str,
+    tool_name: str,
+    agent_name: Optional[str] = None,
+    span_name: Optional[str] = None,
+) -> Callable[[F], F]:
+    """Decorator for MCP tool invocation spans.
+
+    Sets agentpulse.span_kind = "mcp.tool_call", mcp server name, and tool name.
+    Also sets tool.name so existing tool analytics capture MCP tool calls.
+
+    Args:
+        server_name: Name of the MCP server, e.g. "filesystem-server".
+        tool_name: Name of the tool being called, e.g. "read_file".
+        agent_name: Name of the agent invoking this tool.
+        span_name: Override the span name (defaults to function name).
+    """
+    def decorator(fn: F) -> F:
+        name = span_name or fn.__name__
+
+        def apply_attrs(span: Span) -> None:
+            _set_common_attrs(span, attrs.MCP_TOOL_CALL, agent_name)
+            span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
+            span.set_attribute(attrs.MCP_TOOL_NAME, tool_name)
+            span.set_attribute(attrs.TOOL_NAME, tool_name)
+
+        return _make_wrapper(fn, name, attrs.MCP_TOOL_CALL, apply_attrs)
+    return decorator
+
+
+@contextmanager
+def mcp_tool_call_ctx(
+    server_name: str,
+    tool_name: str,
+    agent_name: Optional[str] = None,
+    span_name: str = "mcp.tool_call",
+) -> Generator[Span, None, None]:
+    """Context manager form of mcp_tool_call."""
+    with _get_tracer().start_as_current_span(span_name) as span:
+        _set_common_attrs(span, attrs.MCP_TOOL_CALL, agent_name)
+        span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
+        span.set_attribute(attrs.MCP_TOOL_NAME, tool_name)
+        span.set_attribute(attrs.TOOL_NAME, tool_name)
+        try:
+            yield span
+        except Exception as exc:
+            span.set_status(StatusCode.ERROR, str(exc))
+            raise
+
+
+# ── MCP list tools ─────────────────────────────────────────────────────────────
+
+def mcp_list_tools(
+    server_name: str,
+    agent_name: Optional[str] = None,
+    span_name: Optional[str] = None,
+) -> Callable[[F], F]:
+    """Decorator for MCP tool discovery spans.
+
+    Sets agentpulse.span_kind = "mcp.list_tools" and mcp server name.
+    Use record_mcp_discovery() inside to attach tool count and names.
+
+    Args:
+        server_name: Name of the MCP server being queried.
+        agent_name: Name of the agent performing discovery.
+        span_name: Override the span name (defaults to function name).
+    """
+    def decorator(fn: F) -> F:
+        name = span_name or fn.__name__
+
+        def apply_attrs(span: Span) -> None:
+            _set_common_attrs(span, attrs.MCP_LIST_TOOLS, agent_name)
+            span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
+
+        return _make_wrapper(fn, name, attrs.MCP_LIST_TOOLS, apply_attrs)
+    return decorator
+
+
+@contextmanager
+def mcp_list_tools_ctx(
+    server_name: str,
+    agent_name: Optional[str] = None,
+    span_name: str = "mcp.list_tools",
+) -> Generator[Span, None, None]:
+    """Context manager form of mcp_list_tools."""
+    with _get_tracer().start_as_current_span(span_name) as span:
+        _set_common_attrs(span, attrs.MCP_LIST_TOOLS, agent_name)
+        span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
+        try:
+            yield span
+        except Exception as exc:
+            span.set_status(StatusCode.ERROR, str(exc))
+            raise
+
+
+# ── MCP recording helpers ──────────────────────────────────────────────────────
+
+def record_mcp_tool_result(
+    span: Span,
+    input_schema: Optional[str] = None,
+    output_schema: Optional[str] = None,
+    tool_input: Optional[str] = None,
+    tool_output: Optional[str] = None,
+) -> None:
+    """Attach MCP tool call data to an active span.
+
+    Call this inside an @mcp_tool_call decorated function after the tool returns.
+
+    Args:
+        span: The active span.
+        input_schema: JSON schema of the tool's input parameters.
+        output_schema: JSON schema of the tool's output.
+        tool_input: Actual tool input (serialized).
+        tool_output: Actual tool output (serialized).
+    """
+    if input_schema is not None:
+        span.set_attribute(attrs.MCP_INPUT_SCHEMA, input_schema)
+    if output_schema is not None:
+        span.set_attribute(attrs.MCP_OUTPUT_SCHEMA, output_schema)
+    if tool_input is not None:
+        span.set_attribute("tool.input", tool_input)
+    if tool_output is not None:
+        span.set_attribute("tool.output", tool_output)
+
+
+def record_mcp_discovery(
+    span: Span,
+    tool_count: int,
+    discovered_tools: list,
+) -> None:
+    """Attach tool discovery data to an mcp.list_tools span.
+
+    Call this inside an @mcp_list_tools decorated function after list_tools returns.
+
+    Args:
+        span: The active span.
+        tool_count: Number of tools discovered.
+        discovered_tools: List of tool names discovered.
+    """
+    span.set_attribute(attrs.MCP_TOOL_COUNT, str(tool_count))
+    if discovered_tools:
+        span.set_attribute(attrs.MCP_DISCOVERED_TOOLS, ",".join(str(t) for t in discovered_tools))
+
+
 # ── Streaming helper ──────────────────────────────────────────────────────────
 
 def record_stream_first_token(span: "Span") -> None:

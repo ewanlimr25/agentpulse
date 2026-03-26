@@ -6,6 +6,8 @@ const kindColor: Record<string, string> = {
   "agent.handoff": "text-green-400 bg-green-950/40 border-green-800",
   "memory.read": "text-amber-400 bg-amber-950/40 border-amber-800",
   "memory.write": "text-orange-400 bg-orange-950/40 border-orange-800",
+  "mcp.tool_call": "text-teal-400 bg-teal-950/40 border-teal-800",
+  "mcp.list_tools": "text-teal-300 bg-teal-950/30 border-teal-700",
   unknown: "text-zinc-400 bg-zinc-800 border-zinc-700",
 };
 

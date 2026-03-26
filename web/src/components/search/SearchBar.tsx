@@ -9,6 +9,8 @@ const SPAN_KIND_OPTIONS = [
   { value: "agent.handoff", label: "Agent Handoff" },
   { value: "memory.read", label: "Memory Read" },
   { value: "memory.write", label: "Memory Write" },
+  { value: "mcp.tool_call", label: "MCP Tool Call" },
+  { value: "mcp.list_tools", label: "MCP List Tools" },
 ];
 
 interface Props {

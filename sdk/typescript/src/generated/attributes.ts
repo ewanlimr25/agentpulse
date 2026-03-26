@@ -12,12 +12,16 @@ export type AgentSpanKind =
   | "agent.handoff"
   | "memory.read"
   | "memory.write"
+  | "mcp.tool_call"
+  | "mcp.list_tools"
 
 export const LLM_CALL: AgentSpanKind = "llm.call"
 export const TOOL_CALL: AgentSpanKind = "tool.call"
 export const AGENT_HANDOFF: AgentSpanKind = "agent.handoff"
 export const MEMORY_READ: AgentSpanKind = "memory.read"
 export const MEMORY_WRITE: AgentSpanKind = "memory.write"
+export const MCP_TOOL_CALL: AgentSpanKind = "mcp.tool_call"
+export const MCP_LIST_TOOLS: AgentSpanKind = "mcp.list_tools"
 
 // ── Identity ────────────────────────────────────────────────────────────────
 
@@ -51,3 +55,12 @@ export const MEMORY_KEY = "agentpulse.memory.key" as const
 // ── Streaming ────────────────────────────────────────────────────────────────
 
 export const TTFT_MS = "agentpulse.ttft_ms" as const
+
+// ── MCP (Model Context Protocol) ─────────────────────────────────────────────
+
+export const MCP_SERVER_NAME = "agentpulse.mcp.server_name" as const
+export const MCP_TOOL_NAME = "agentpulse.mcp.tool_name" as const
+export const MCP_INPUT_SCHEMA = "agentpulse.mcp.input_schema" as const
+export const MCP_OUTPUT_SCHEMA = "agentpulse.mcp.output_schema" as const
+export const MCP_TOOL_COUNT = "agentpulse.mcp.tool_count" as const
+export const MCP_DISCOVERED_TOOLS = "agentpulse.mcp.discovered_tools" as const

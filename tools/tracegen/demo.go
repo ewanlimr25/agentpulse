@@ -186,6 +186,24 @@ var demoProjects = []demoProjectWithRules{
 			{"Pipeline degraded", "error_rate", 15.0, "gt", 3600, ""},
 		},
 	},
+	{
+		demoProject: demoProject{
+			name: "mcp-gateway-agent",
+			runs: 10,
+			scenarios: []weightedScenario{
+				// 7 successful MCP gateway runs
+				{"mcp-gateway", scenarioMCPGateway, 0},
+				// 3 runs with an MCP tool failure
+				{"mcp-gateway-error", scenarioMCPGatewayWithError, 60},
+			},
+			users: []string{"user-dev-1", "user-dev-2"},
+		},
+		budgetRule: budgetRule{"mcp gateway cap", 0.005, "notify", "run"},
+		alertRules: []alertRule{
+			// MCP write_file fails ~60% of the error runs → fires at 20% threshold
+			{"MCP tool failures", "tool_failure", 20.0, "gt", 3600, "write_file"},
+		},
+	},
 }
 
 // runDemo creates all demo projects via the backend API and seeds each with runs.
