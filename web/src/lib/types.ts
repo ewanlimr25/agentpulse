@@ -286,6 +286,17 @@ export interface RecentAlertEvent extends AlertEvent {
   RuleName: string;
 }
 
+// ── Run Comparison ────────────────────────────────────────────────────────────
+
+export interface RunComparison {
+  RunA: Run;
+  RunB: Run;
+  TopologyA: Topology | null;
+  TopologyB: Topology | null;
+  EvalsA: SpanEval[];
+  EvalsB: SpanEval[];
+}
+
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 export type AnalyticsWindow = "24h" | "7d";

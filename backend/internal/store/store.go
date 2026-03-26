@@ -22,6 +22,8 @@ type RunStore interface {
 	Count(ctx context.Context, projectID string) (int, error)
 	// Get returns a single run with its aggregated metrics.
 	Get(ctx context.Context, runID string) (*domain.Run, error)
+	// GetMulti fetches multiple runs by their IDs concurrently.
+	GetMulti(ctx context.Context, runIDs []string) ([]*domain.Run, error)
 	// ListBySession returns all runs for a session, oldest first.
 	// projectID is required to enforce project-scoped access at the store layer.
 	ListBySession(ctx context.Context, projectID, sessionID string) ([]*domain.Run, error)

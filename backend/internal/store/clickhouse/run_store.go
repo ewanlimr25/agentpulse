@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -107,6 +108,40 @@ func (s *RunStore) Get(ctx context.Context, runID string) (*domain.Run, error) {
 		return nil, err
 	}
 	return r, rows.Err()
+}
+
+// GetMulti fetches multiple runs concurrently using parallel Get calls.
+// It avoids an IN clause because clickhouse-go slice binding can be unreliable.
+func (s *RunStore) GetMulti(ctx context.Context, runIDs []string) ([]*domain.Run, error) {
+	type result struct {
+		idx int
+		run *domain.Run
+		err error
+	}
+
+	ch := make(chan result, len(runIDs))
+	var wg sync.WaitGroup
+	for i, id := range runIDs {
+		wg.Add(1)
+		go func(idx int, runID string) {
+			defer wg.Done()
+			r, err := s.Get(ctx, runID)
+			ch <- result{idx: idx, run: r, err: err}
+		}(i, id)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	runs := make([]*domain.Run, len(runIDs))
+	for res := range ch {
+		if res.err != nil {
+			return nil, res.err
+		}
+		runs[res.idx] = res.run
+	}
+	return runs, nil
 }
 
 func (s *RunStore) ListBySession(ctx context.Context, projectID, sessionID string) ([]*domain.Run, error) {

@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -67,6 +67,10 @@ export const runsApi = {
   spans: (runId: string) => apiFetch<Span[]>(`/api/v1/runs/${runId}/spans`),
   topology: (runId: string) =>
     apiFetch<Topology>(`/api/v1/runs/${runId}/topology`),
+  compare: (projectId: string, a: string, b: string) =>
+    apiFetch<RunComparison>(
+      `/api/v1/projects/${projectId}/runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`
+    ),
 };
 
 // ── Evals ─────────────────────────────────────────────────────────────────────

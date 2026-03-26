@@ -3,21 +3,25 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/agentpulse/agentpulse/backend/internal/domain"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
 type RunHandler struct {
-	runs  store.RunStore
-	spans store.SpanStore
-	loops store.LoopStore
+	runs     store.RunStore
+	spans    store.SpanStore
+	loops    store.LoopStore
+	topology store.TopologyStore
+	evals    store.EvalStore
 }
 
-func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore) *RunHandler {
-	return &RunHandler{runs: runs, spans: spans, loops: loops}
+func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore, topology store.TopologyStore, evals store.EvalStore) *RunHandler {
+	return &RunHandler{runs: runs, spans: spans, loops: loops, topology: topology, evals: evals}
 }
 
 func (h *RunHandler) Routes(r chi.Router) {
@@ -94,6 +98,110 @@ func (h *RunHandler) ListSpans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusOK, spans)
+}
+
+// Compare returns side-by-side data for two runs within the same project.
+// Route: GET /api/v1/projects/{projectID}/runs/compare?a={runId}&b={runId}
+func (h *RunHandler) Compare(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	runIDA := r.URL.Query().Get("a")
+	runIDB := r.URL.Query().Get("b")
+
+	if runIDA == "" || runIDB == "" {
+		httputil.Error(w, http.StatusBadRequest, "query params 'a' and 'b' are required")
+		return
+	}
+	if runIDA == runIDB {
+		httputil.Error(w, http.StatusBadRequest, "query params 'a' and 'b' must be different run IDs")
+		return
+	}
+
+	// Fetch both runs in parallel.
+	runs, err := h.runs.GetMulti(r.Context(), []string{runIDA, runIDB})
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, "one or both runs not found")
+		return
+	}
+	runA, runB := runs[0], runs[1]
+
+	if runA.ProjectID != projectID || runB.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "run does not belong to this project")
+		return
+	}
+
+	// Fetch topology and evals for both runs in parallel.
+	var (
+		topologyA, topologyB *domain.Topology
+		evalsA, evalsB       []*domain.SpanEval
+		mu                   sync.Mutex
+		fetchErr             error
+	)
+
+	type fetchFunc func()
+	fetchers := []fetchFunc{
+		func() {
+			t, e := h.topology.GetByRun(r.Context(), runIDA)
+			mu.Lock()
+			defer mu.Unlock()
+			if e == nil {
+				topologyA = t
+			}
+		},
+		func() {
+			t, e := h.topology.GetByRun(r.Context(), runIDB)
+			mu.Lock()
+			defer mu.Unlock()
+			if e == nil {
+				topologyB = t
+			}
+		},
+		func() {
+			ev, e := h.evals.ListByRun(r.Context(), runIDA)
+			mu.Lock()
+			defer mu.Unlock()
+			if e != nil {
+				fetchErr = e
+			} else {
+				evalsA = ev
+			}
+		},
+		func() {
+			ev, e := h.evals.ListByRun(r.Context(), runIDB)
+			mu.Lock()
+			defer mu.Unlock()
+			if e != nil {
+				fetchErr = e
+			} else {
+				evalsB = ev
+			}
+		},
+	}
+
+	var wg sync.WaitGroup
+	for _, fn := range fetchers {
+		wg.Add(1)
+		go func(f fetchFunc) {
+			defer wg.Done()
+			f()
+		}(fn)
+	}
+	wg.Wait()
+
+	if fetchErr != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to fetch comparison data")
+		return
+	}
+
+	comparison := &domain.RunComparison{
+		RunA:      runA,
+		RunB:      runB,
+		TopologyA: topologyA,
+		TopologyB: topologyB,
+		EvalsA:    evalsA,
+		EvalsB:    evalsB,
+	}
+
+	httputil.JSON(w, http.StatusOK, comparison)
 }
 
 func intQueryParam(r *http.Request, key string, fallback int) int {

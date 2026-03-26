@@ -42,7 +42,7 @@ func NewRouter(
 	})
 
 	projectHandler := handler.NewProjectHandler(projects)
-	runHandler := handler.NewRunHandler(runs, spans, loops)
+	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals)
@@ -73,6 +73,7 @@ func NewRouter(
 			r.Get("/", projectHandler.Get)
 
 			r.Get("/runs", runHandler.List)
+			r.Get("/runs/compare", runHandler.Compare)
 			r.Get("/evals/summary", evalHandler.SummaryByProject)
 
 			r.Route("/evals", func(r chi.Router) {

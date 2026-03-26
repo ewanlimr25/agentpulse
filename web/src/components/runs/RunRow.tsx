@@ -14,12 +14,38 @@ export function formatCost(usd: number) {
   return `$${usd.toFixed(4)}`;
 }
 
-export function RunRow({ run, projectId }: { run: Run; projectId: string }) {
+interface RunRowProps {
+  run: Run;
+  projectId: string;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
+}
+
+export function RunRow({ run, projectId, selectable, selected, onToggle }: RunRowProps) {
   return (
     <Link
       href={`/projects/${projectId}/runs/${run.RunID}`}
-      className="flex items-center gap-4 px-5 py-4 border border-[var(--border)] bg-[var(--surface)] rounded-xl hover:border-indigo-600 transition-colors group"
+      className={`flex items-center gap-4 px-5 py-4 border bg-[var(--surface)] rounded-xl hover:border-indigo-600 transition-colors group ${
+        selected
+          ? "border-indigo-500 ring-1 ring-indigo-500"
+          : "border-[var(--border)]"
+      }`}
     >
+      {selectable && (
+        <input
+          type="checkbox"
+          checked={selected ?? false}
+          onChange={() => {/* handled by onToggle */}}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onToggle?.();
+          }}
+          className="w-4 h-4 accent-indigo-500 cursor-pointer flex-shrink-0"
+          aria-label={`Select run ${run.RunID}`}
+        />
+      )}
       <StatusBadge status={run.Status === "ok" ? "ok" : "error"} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-mono text-[var(--text-muted)] truncate">{run.RunID}</p>

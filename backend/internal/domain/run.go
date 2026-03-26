@@ -2,6 +2,17 @@ package domain
 
 import "time"
 
+// RunComparison holds two runs and their associated topology and eval data
+// for side-by-side comparison.
+type RunComparison struct {
+	RunA      *Run
+	RunB      *Run
+	TopologyA *Topology
+	TopologyB *Topology
+	EvalsA    []*SpanEval
+	EvalsB    []*SpanEval
+}
+
 // Run represents a single agent execution run with aggregated metrics.
 // It is derived from spans stored in ClickHouse via a materialized view.
 type Run struct {
