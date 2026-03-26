@@ -128,6 +128,12 @@ type EvalConfigStore interface {
 	Delete(ctx context.Context, projectID, evalName string) error
 }
 
+// SearchStore performs full-text search over spans stored in ClickHouse.
+type SearchStore interface {
+	Search(ctx context.Context, params *domain.SearchParams) ([]*domain.SearchResult, error)
+	SearchCount(ctx context.Context, params *domain.SearchParams) (int, error)
+}
+
 // LoopStore manages detected agent loops in Postgres.
 type LoopStore interface {
 	Upsert(ctx context.Context, loop *domain.RunLoop) error

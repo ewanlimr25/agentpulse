@@ -49,6 +49,22 @@ var sampleConversations = [][2]string{
 		"Write a brief summary of the PR changes and assess whether they are ready to merge.",
 		"This PR refactors the authentication middleware to use JWT instead of session cookies. Changes are clean and well-tested (92% coverage). One concern: the token expiry is hardcoded to 24h — recommend making it configurable. Otherwise ready to merge pending that fix.",
 	},
+	{
+		"The external API call failed. Please analyze the error and suggest a retry strategy.",
+		"The call to the payments API returned: rate limit exceeded, retry after 60 seconds. This is a transient error. Recommended strategy: exponential backoff starting at 60s, max 3 retries. If retries are exhausted, queue the request for async processing and notify the user.",
+	},
+	{
+		"Authenticate with the model provider and run the inference job.",
+		"authentication failed: invalid API key — please check that OPENAI_API_KEY is set correctly in your environment. The key provided starts with 'sk-proj-' which suggests it may be a project-scoped key that lacks inference permissions.",
+	},
+	{
+		"The data pipeline job has not completed after the expected window. Diagnose the issue.",
+		"timeout after 30s waiting for response from the data-enrichment service. The service at enrichment-svc:8080/enrich appears to be unresponsive. Last successful heartbeat was 4 minutes ago. Suggest restarting the pod and checking memory pressure on the node.",
+	},
+	{
+		"Run inference on the provided dataset using the production model.",
+		"quota exceeded for model gpt-4o — you have consumed 100% of your monthly token budget. Current usage: 10,000,000 / 10,000,000 tokens. Please upgrade your plan or wait until the quota resets on the 1st of next month.",
+	},
 }
 
 func randTokens(minInput, maxInput, minOutput, maxOutput int) (int, int) {

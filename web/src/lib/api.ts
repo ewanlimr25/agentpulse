@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, SearchResponse } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -206,4 +206,25 @@ export const usersApi = {
     apiFetch<UsersListResponse>(
       `/api/v1/projects/${projectId}/users?limit=${limit}&offset=${offset}`
     ),
+};
+
+// ── Search ─────────────────────────────────────────────────────────────────────
+
+export const searchApi = {
+  search: (projectId: string, params: {
+    q: string;
+    span_kind?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams({ q: params.q });
+    if (params.span_kind) qs.set('span_kind', params.span_kind);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    qs.set('limit', String(params.limit ?? 20));
+    qs.set('offset', String(params.offset ?? 0));
+    return apiFetch<SearchResponse>(`/api/v1/projects/${projectId}/search?${qs}`);
+  },
 };

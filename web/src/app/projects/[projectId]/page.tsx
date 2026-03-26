@@ -2,15 +2,15 @@
 
 import { use, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import Link from "next/link";
-import { projectsApi, evalsApi, AuthError } from "@/lib/api";
+import { projectsApi, evalsApi, searchApi, AuthError } from "@/lib/api";
 import { saveApiKey, removeApiKey } from "@/lib/api-keys";
 import { Navbar } from "@/components/Navbar";
 import { ApiKeyPrompt } from "@/components/ApiKeyPrompt";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { runsApi } from "@/lib/api";
-import type { Run } from "@/lib/types";
+import type { Run, SearchResult } from "@/lib/types";
 import { RunCharts } from "@/components/charts/RunCharts";
 import { TabBar } from "@/components/ui/TabBar";
 import { BudgetSection } from "@/components/budget/BudgetSection";
@@ -21,6 +21,8 @@ import { SessionsSection } from "@/components/sessions/SessionsSection";
 import { UsersSection } from "@/components/users/UsersSection";
 import { RunList } from "@/components/runs/RunList";
 import { formatCost } from "@/components/runs/RunRow";
+import { SearchBar } from "@/components/search/SearchBar";
+import { SearchResults } from "@/components/search/SearchResults";
 
 const PAGE_SIZE = 20;
 
@@ -72,6 +74,12 @@ export default function ProjectPage({
   const [keyError, setKeyError] = useState("");
   const [isValidatingKey, setIsValidatingKey] = useState(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchSpanKind, setSearchSpanKind] = useState("");
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [allSearchResults, setAllSearchResults] = useState<SearchResult[]>([]);
+
   const { data: project, error: projectError } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => projectsApi.get(projectId),
@@ -83,6 +91,23 @@ export default function ProjectPage({
     queryFn: () => evalsApi.summaryByProject(projectId),
     retry: (_, err) => !(err instanceof AuthError),
   });
+
+  // Full-text search query
+  const { data: searchData, isFetching: isSearching } = useQuery({
+    queryKey: ["search", projectId, searchQuery, searchSpanKind, searchOffset],
+    queryFn: () => searchApi.search(projectId, {
+      q: searchQuery,
+      span_kind: searchSpanKind || undefined,
+      offset: searchOffset,
+      limit: 20,
+    }),
+    enabled: searchQuery.length >= 3,
+    placeholderData: keepPreviousData,
+  });
+
+  // Accumulate results across pages for load-more.
+  // When the query changes, reset accumulated results.
+  const isSearchActive = searchQuery.length >= 3;
 
   // Reads from the same cache key that RunList populates via useInfiniteQuery
   const runs = useAllFetchedRuns(projectId);
@@ -156,43 +181,82 @@ export default function ProjectPage({
           <MetricCard label="Error Rate" value={`${errorRate}%`} />
         </div>
 
-        <TabBar
-          tabs={[
-            { key: "overview", label: "Overview" },
-            { key: "services", label: "Services" },
-            { key: "budget", label: "Budget" },
-            { key: "alerts", label: "Alerts" },
-            { key: "evals", label: "Evals" },
-            { key: "sessions", label: "Sessions" },
-            { key: "users", label: "Users" },
-          ]}
-          activeTab={activeTab}
-          onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users")}
+        <SearchBar
+          onSearch={(q, kind) => {
+            // Reset accumulated results and offset on new query.
+            setSearchQuery(q);
+            setSearchSpanKind(kind);
+            setSearchOffset(0);
+            setAllSearchResults([]);
+          }}
+          isLoading={isSearching}
         />
 
-        {activeTab === "overview" && (
+        {isSearchActive ? (
+          <SearchResults
+            results={searchData?.results ?? allSearchResults}
+            total={searchData?.total ?? 0}
+            query={searchQuery}
+            projectId={projectId}
+            isLoading={isSearching}
+            hasMore={
+              searchData
+                ? searchData.offset + searchData.limit < searchData.total
+                : false
+            }
+            onLoadMore={() => {
+              if (searchData) {
+                // Merge current page into accumulated results before advancing.
+                setAllSearchResults((prev) => {
+                  const ids = new Set(prev.map((r) => r.SpanID + r.MatchedField));
+                  const next = searchData.results.filter((r) => !ids.has(r.SpanID + r.MatchedField));
+                  return [...prev, ...next];
+                });
+                setSearchOffset(searchData.offset + searchData.limit);
+              }
+            }}
+          />
+        ) : (
           <>
-            <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
-            <RunCharts runs={runs} evalSummaries={evalSummaries} />
+            <TabBar
+              tabs={[
+                { key: "overview", label: "Overview" },
+                { key: "services", label: "Services" },
+                { key: "budget", label: "Budget" },
+                { key: "alerts", label: "Alerts" },
+                { key: "evals", label: "Evals" },
+                { key: "sessions", label: "Sessions" },
+                { key: "users", label: "Users" },
+              ]}
+              activeTab={activeTab}
+              onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users")}
+            />
 
-            <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
-            <RunList projectId={projectId} />
+            {activeTab === "overview" && (
+              <>
+                <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
+                <RunCharts runs={runs} evalSummaries={evalSummaries} />
+
+                <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Recent Runs</h2>
+                <RunList projectId={projectId} />
+              </>
+            )}
+
+            {activeTab === "services" && <ServicesSection projectId={projectId} />}
+
+            {activeTab === "budget" && <BudgetSection projectId={projectId} />}
+
+            {activeTab === "alerts" && <AlertsSection projectId={projectId} />}
+
+            {activeTab === "evals" && (
+              <EvalsSection projectId={projectId} runs={runs} evalSummaries={evalSummaries ?? []} />
+            )}
+
+            {activeTab === "sessions" && <SessionsSection projectId={projectId} />}
+
+            {activeTab === "users" && <UsersSection projectId={projectId} />}
           </>
         )}
-
-        {activeTab === "services" && <ServicesSection projectId={projectId} />}
-
-        {activeTab === "budget" && <BudgetSection projectId={projectId} />}
-
-        {activeTab === "alerts" && <AlertsSection projectId={projectId} />}
-
-        {activeTab === "evals" && (
-          <EvalsSection projectId={projectId} runs={runs} evalSummaries={evalSummaries ?? []} />
-        )}
-
-        {activeTab === "sessions" && <SessionsSection projectId={projectId} />}
-
-        {activeTab === "users" && <UsersSection projectId={projectId} />}
       </main>
     </div>
   );

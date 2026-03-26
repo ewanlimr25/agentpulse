@@ -297,6 +297,36 @@ export interface RunComparison {
   EvalsB: SpanEval[];
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
+
+export interface SearchResult {
+  TraceID: string;
+  SpanID: string;
+  RunID: string;
+  ProjectID: string;
+  SpanName: string;
+  AgentSpanKind: string;
+  AgentName: string;
+  ModelID: string;
+  StatusCode: string;
+  StartTime: string;
+  DurationNS: number;
+  InputTokens: number;
+  OutputTokens: number;
+  TotalTokens: number;
+  CostUSD: number;
+  MatchedField: string;
+  Snippet: string;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+  total: number;
+  limit: number;
+  offset: number;
+  query: string;
+}
+
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 export type AnalyticsWindow = "24h" | "7d";

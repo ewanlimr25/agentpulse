@@ -27,6 +27,7 @@ func NewRouter(
 	loops store.LoopStore,
 	sessions store.SessionStore,
 	users store.UserStore,
+	search store.SearchStore,
 	hub *alert.Hub,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -52,6 +53,7 @@ func NewRouter(
 	loopHandler := handler.NewLoopHandler(loops)
 	sessionHandler := handler.NewSessionHandler(sessions, runs)
 	userHandler := handler.NewUserHandler(users)
+	searchHandler := handler.NewSearchHandler(search)
 
 	bearerAuth := middleware.BearerAuth(projects)
 
@@ -99,6 +101,8 @@ func NewRouter(
 			r.Route("/users", func(r chi.Router) {
 				userHandler.Routes(r)
 			})
+
+			r.Get("/search", searchHandler.Search)
 		})
 
 		// ── Run-scoped routes (unauthenticated for now) ───────────────────────

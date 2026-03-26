@@ -51,6 +51,7 @@ func main() {
 	runStore := chstore.NewRunStore(chConn)
 	sessionStore := chstore.NewSessionStore(chConn)
 	userStore := chstore.NewUserStore(chConn)
+	searchStore := chstore.NewSearchStore(chConn)
 	projectStore := pgstore.NewProjectStore(pgPool)
 	topologyStore := pgstore.NewTopologyStore(pgPool)
 	budgetStore := pgstore.NewBudgetStore(pgPool)
@@ -85,7 +86,7 @@ func main() {
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, hub)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, hub)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
