@@ -59,6 +59,10 @@ migrate-up: ## Apply all pending migrations
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/005_budget_scope_user.up.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/012_search_indexes.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/013_ttft.sql
+	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
+		--database agentpulse < migrations/clickhouse/014_run_metrics_ttft.sql
 	@echo "Migrations complete."
 
 migrate-down: ## Roll back Postgres migrations

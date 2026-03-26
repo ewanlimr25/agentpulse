@@ -89,6 +89,28 @@ export function toTokenSeries(runs: Run[]): TokenPoint[] {
   }));
 }
 
+export interface TtftPoint {
+  label: string;
+  p50: number;
+  p95: number;
+  runId: string;
+}
+
+/**
+ * Convert a Run array into TTFT chart data points.
+ * Only includes runs that have streaming span data (StreamingSpanCount > 0).
+ */
+export function toTtftSeries(runs: Run[]): TtftPoint[] {
+  return runs
+    .filter((run) => (run.StreamingSpanCount ?? 0) > 0)
+    .map((run) => ({
+      label: formatLabel(run.StartTime),
+      p50: run.TtftP50Ms ?? 0,
+      p95: run.TtftP95Ms ?? 0,
+      runId: run.RunID,
+    }));
+}
+
 export interface QualityPoint {
   label: string;
   score: number;           // overall average across all eval types

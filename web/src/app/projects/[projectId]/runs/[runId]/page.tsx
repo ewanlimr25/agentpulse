@@ -50,6 +50,14 @@ function SpanRow({ span, evals, onClick }: { span: Span; evals?: SpanEval[]; onC
             {evals && evals.length > 1 && <span className="opacity-60 text-[10px]">+{evals.length - 1}</span>}
           </span>
         )}
+        {(span.TtftMs ?? 0) > 0 && (
+          <span className="text-cyan-400">
+            TTFT {span.TtftMs!.toFixed(0)}ms
+            {span.OutputTokens > 0 && (span.DurationNS / 1e6 - span.TtftMs!) > 10 && (
+              <> · {(span.OutputTokens / ((span.DurationNS / 1e6 - span.TtftMs!) / 1000)).toFixed(0)} tok/s</>
+            )}
+          </span>
+        )}
         {span.TotalTokens > 0 && <span>{span.TotalTokens.toLocaleString()} tok</span>}
         {span.CostUSD > 0 && <span>${span.CostUSD.toFixed(5)}</span>}
         <span>{formatDurationNS(span.DurationNS)}</span>
@@ -140,6 +148,13 @@ export default function RunPage({
               value={run.SpanCount}
               sub={`${run.LLMCallCount} LLM · ${run.ToolCallCount} tool`}
             />
+            {(run.StreamingSpanCount ?? 0) > 0 && (
+              <MetricCard
+                label="TTFT p50"
+                value={`${run.TtftP50Ms?.toFixed(0) ?? 0}ms`}
+                sub={`p95: ${run.TtftP95Ms?.toFixed(0) ?? 0}ms · ${run.StreamingSpanCount} streaming spans`}
+              />
+            )}
           </div>
         )}
 

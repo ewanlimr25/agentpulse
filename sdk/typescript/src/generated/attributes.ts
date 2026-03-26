@@ -47,3 +47,7 @@ export const HANDOFF_TARGET = "agentpulse.handoff.target_agent" as const
 // ── Memory ──────────────────────────────────────────────────────────────────
 
 export const MEMORY_KEY = "agentpulse.memory.key" as const
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+
+export const TTFT_MS = "agentpulse.ttft_ms" as const

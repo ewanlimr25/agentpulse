@@ -316,6 +316,27 @@ def memory_write_ctx(
             raise
 
 
+# ── Streaming helper ──────────────────────────────────────────────────────────
+
+def record_stream_first_token(span: "Span") -> None:
+    """Record the moment the first streaming token arrives.
+
+    Call exactly once per streaming LLM span as soon as the first token
+    is yielded. Adds a 'stream.first_token' SpanEvent (timestamp captured
+    automatically by the OTel SDK) so the collector can compute TTFT.
+
+    Uses a guard attribute to silently no-op if called more than once.
+    """
+    from opentelemetry.trace import INVALID_SPAN
+    if span is INVALID_SPAN:
+        return
+    # Guard: no-op on second call
+    if span.attributes and span.attributes.get("agentpulse._ttft_recorded"):
+        return
+    span.set_attribute("agentpulse._ttft_recorded", True)
+    span.add_event("stream.first_token")
+
+
 # ── Usage helper ──────────────────────────────────────────────────────────────
 
 def record_llm_usage(

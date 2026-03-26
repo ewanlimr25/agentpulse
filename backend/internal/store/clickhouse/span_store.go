@@ -27,7 +27,8 @@ SELECT
     span_name, service_name, status_code, status_message,
     start_time, end_time, duration_ns,
     input_tokens, output_tokens, total_tokens, cost_usd,
-    attributes, resource_attrs
+    attributes, resource_attrs,
+    ttft_ms
 FROM spans
 WHERE run_id = ?
 ORDER BY start_time ASC
@@ -55,6 +56,7 @@ func (s *SpanStore) ListByRun(ctx context.Context, runID string) ([]*domain.Span
 			&startTime, &endTime, &sp.DurationNS,
 			&sp.InputTokens, &sp.OutputTokens, &sp.TotalTokens, &sp.CostUSD,
 			&attrs, &resourceAttrs,
+			&sp.TtftMs,
 		); err != nil {
 			return nil, fmt.Errorf("span_store scan: %w", err)
 		}

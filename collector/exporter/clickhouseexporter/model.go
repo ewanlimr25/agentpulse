@@ -34,6 +34,7 @@ type spanRow struct {
 	InputTokens  uint32
 	OutputTokens uint32
 	CostUSD      float64
+	TtftMs       float64
 
 	Attributes    map[string]string
 	ResourceAttrs map[string]string
@@ -69,6 +70,7 @@ func spanRowFromOTel(span ptrace.Span, resource pcommon.Resource, projectID stri
 	row.InputTokens = uint32(intAttr(attrs, "agentpulse.input_tokens"))
 	row.OutputTokens = uint32(intAttr(attrs, "agentpulse.output_tokens"))
 	row.CostUSD = floatAttr(attrs, "agentpulse.cost_usd")
+	row.TtftMs = floatAttr(attrs, "agentpulse.ttft_ms")
 
 	// service.name lives in resource attributes
 	row.ServiceName = strAttr(resourceAttrs, "service.name")

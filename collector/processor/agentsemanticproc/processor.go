@@ -21,6 +21,7 @@ const (
 	attrProjectID     = "agentpulse.project_id"
 	attrUserID        = "agentpulse.user_id"
 	attrSessionID     = "agentpulse.session_id"
+	attrTtftMs        = "agentpulse.ttft_ms"
 )
 
 // semanticProcessor enriches OTel spans with agent semantic fields.
@@ -116,6 +117,58 @@ func (p *semanticProcessor) enrichSpan(span ptrace.Span) {
 			)
 		}
 	}
+
+	// 10. Compute TTFT from stream.first_token event or SDK-stamped attribute.
+	if ttft := p.computeTTFT(span); ttft > 0 {
+		attrs.PutDouble(attrTtftMs, ttft)
+	}
+}
+
+// computeTTFT computes time-to-first-token in milliseconds for a streaming span.
+// It first checks for an SDK-computed attribute (handles serverless clock skew),
+// then falls back to the stream.first_token SpanEvent timestamp.
+// Returns 0 if no streaming data is present.
+func (p *semanticProcessor) computeTTFT(span ptrace.Span) float64 {
+	attrs := span.Attributes()
+
+	// Prefer SDK-computed value (handles serverless clock issues)
+	if v, ok := attrs.Get(attrTtftMs); ok {
+		if ms := v.Double(); ms > 0 {
+			return ms
+		}
+	}
+
+	// Early exit if no events
+	events := span.Events()
+	if events.Len() == 0 {
+		return 0
+	}
+
+	startNano := span.StartTimestamp().AsTime().UnixNano()
+	spanDurNano := span.EndTimestamp().AsTime().UnixNano() - startNano
+
+	for i := 0; i < events.Len(); i++ {
+		e := events.At(i)
+		if e.Name() != "stream.first_token" {
+			continue
+		}
+		eventNano := e.Timestamp().AsTime().UnixNano()
+		if eventNano == 0 {
+			// Zero timestamp is invalid — skip
+			break
+		}
+		deltaNano := eventNano - startNano
+		if deltaNano <= 0 {
+			// NTP skew or clock issue — clamp to 0
+			break
+		}
+		// Cap at span duration
+		if deltaNano > spanDurNano && spanDurNano > 0 {
+			deltaNano = spanDurNano
+		}
+		return float64(deltaNano) / 1e6 // ns → ms
+	}
+	return 0
 }
 
 // classifySpanKind determines the agent_span_kind for a span.

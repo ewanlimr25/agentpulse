@@ -55,6 +55,8 @@ async function main() {
     '',
     `export const PROJECT_ID = ${JSON.stringify(firstEntry(fe.project_id))} as const`,
     `export const RUN_ID = ${JSON.stringify(firstEntry(fe.run_id))} as const`,
+    `export const SESSION_ID = ${JSON.stringify(firstEntry(fe.session_id))} as const`,
+    `export const USER_ID = ${JSON.stringify(firstEntry(fe.user_id))} as const`,
     `export const AGENT_NAME = ${JSON.stringify(fe.agent_name[2])} as const`,
     '',
     '// ── LLM ─────────────────────────────────────────────────────────────────────',
@@ -77,6 +79,10 @@ async function main() {
     '// ── Memory ──────────────────────────────────────────────────────────────────',
     '',
     `export const MEMORY_KEY = ${JSON.stringify(firstEntry(fe.memory_key))} as const`,
+    '',
+    '// ── Streaming ────────────────────────────────────────────────────────────────',
+    '',
+    `export const TTFT_MS = "agentpulse.ttft_ms" as const`,
   ]
 
   const outDir = path.dirname(OUT_PATH)

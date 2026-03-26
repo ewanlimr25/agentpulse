@@ -47,4 +47,9 @@ type Run struct {
 
 	// LoopDetected is true when the background loop detector has flagged this run.
 	LoopDetected bool
+
+	// Streaming span metrics — zero when no streaming spans exist in the run.
+	TtftP50Ms          float64
+	TtftP95Ms          float64
+	StreamingSpanCount uint64
 }

@@ -45,6 +45,7 @@ from agentpulse.spans import (
     memory_write,
     memory_write_ctx,
     record_llm_usage,
+    record_stream_first_token,
     tool_call,
     tool_call_ctx,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "memory_write_ctx",
     # Helpers
     "record_llm_usage",
+    "record_stream_first_token",
     "set_run_id",
     "get_run_id",
     "reset_run",

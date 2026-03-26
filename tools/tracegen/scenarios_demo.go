@@ -186,7 +186,7 @@ func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID, 
 		combine(baseAttrs(projectID, runID, "triage-agent"), user, withTool("fetch_customer_profile"))...,
 	)(jitterD(30*time.Millisecond))
 
-	span(tracer, rootCtx, "triage-agent/classify",
+	spanLLM(tracer, rootCtx, "triage-agent/classify",
 		combine(baseAttrs(projectID, runID, "triage-agent"), user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(400, 800), rv(80, 160)))...,
 	)(jitterD(120*time.Millisecond))
@@ -203,7 +203,7 @@ func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID, 
 	)(jitterD(80*time.Millisecond))
 
 	in, out := randTokens(600, 1800, 200, 600)
-	span(tracer, kbCtx, "kb-agent/draft-response",
+	spanLLM(tracer, kbCtx, "kb-agent/draft-response",
 		combine(baseAttrs(projectID, runID, "kb-agent"), user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(300*time.Millisecond))
@@ -211,7 +211,7 @@ func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID, 
 	kbHandoff.End()
 
 	in, out = randTokens(500, 1200, 150, 400)
-	span(tracer, rootCtx, "triage-agent/compose-reply",
+	spanLLM(tracer, rootCtx, "triage-agent/compose-reply",
 		combine(baseAttrs(projectID, runID, "triage-agent"), user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(250*time.Millisecond))
@@ -242,7 +242,7 @@ func scenarioSupportEscalation(ctx context.Context, tracer trace.Tracer, project
 		combine(baseAttrs(projectID, runID, "triage-agent"), user, withTool("fetch_customer_profile"))...,
 	)(jitterD(25*time.Millisecond))
 
-	span(tracer, rootCtx, "triage-agent/classify",
+	spanLLM(tracer, rootCtx, "triage-agent/classify",
 		combine(baseAttrs(projectID, runID, "triage-agent"), user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(400, 900), rv(80, 180)))...,
 	)(jitterD(100*time.Millisecond))
@@ -257,7 +257,7 @@ func scenarioSupportEscalation(ctx context.Context, tracer trace.Tracer, project
 	span(tracer, kbCtx, "tool/search_knowledge_base",
 		combine(baseAttrs(projectID, runID, "kb-agent"), user, withTool("search_knowledge_base"))...,
 	)(jitterD(90*time.Millisecond))
-	span(tracer, kbCtx, "kb-agent/no-match",
+	spanLLM(tracer, kbCtx, "kb-agent/no-match",
 		combine(baseAttrs(projectID, runID, "kb-agent"), user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(40, 80)))...,
 	)(jitterD(100*time.Millisecond))
@@ -343,7 +343,7 @@ func scenarioDeepResearch(ctx context.Context, tracer trace.Tracer, projectID, u
 		combine(baseAttrs(projectID, runID, "web-researcher"), user, withTool("arxiv_search"))...,
 	)(jitterD(200*time.Millisecond))
 	in, out := randTokens(3000, 6000, 600, 1200)
-	span(tracer, resCtx, "web-researcher/synthesize",
+	spanLLM(tracer, resCtx, "web-researcher/synthesize",
 		combine(baseAttrs(projectID, runID, "web-researcher"), user,
 			withLLM("gpt-4o-mini", "openai", in, out))...,
 	)(jitterD(500*time.Millisecond))
@@ -369,14 +369,14 @@ func scenarioDeepResearch(ctx context.Context, tracer trace.Tracer, projectID, u
 		)(jitterD(150*time.Millisecond))
 	}
 	in, out = randTokens(2000, 4000, 300, 700)
-	span(tracer, fcCtx, "fact-checker/assess-credibility",
+	spanLLM(tracer, fcCtx, "fact-checker/assess-credibility",
 		combine(baseAttrs(projectID, runID, "fact-checker"), user,
 			withLLM("gpt-4o", "openai", in, out))...,
 	)(jitterD(400*time.Millisecond))
 	fcHandoff.End()
 
 	in, out = randTokens(5000, 10000, 800, 2000)
-	span(tracer, rootCtx, "orchestrator/write-report",
+	spanLLM(tracer, rootCtx, "orchestrator/write-report",
 		combine(baseAttrs(projectID, runID, "orchestrator"), user,
 			withLLM("gpt-4o", "openai", in, out))...,
 	)(jitterD(800*time.Millisecond))
@@ -476,7 +476,7 @@ func scenarioPRReview(ctx context.Context, tracer trace.Tracer, projectID, userI
 		combine(baseAttrs(projectID, runID, "security-scanner"), user, withTool("run_semgrep"))...,
 	)(jitterD(300*time.Millisecond))
 	in, out := randTokens(1500, 3000, 200, 500)
-	span(tracer, secCtx, "security-scanner/triage-findings",
+	spanLLM(tracer, secCtx, "security-scanner/triage-findings",
 		combine(baseAttrs(projectID, runID, "security-scanner"), user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(350*time.Millisecond))
@@ -493,7 +493,7 @@ func scenarioPRReview(ctx context.Context, tracer trace.Tracer, projectID, userI
 		combine(baseAttrs(projectID, runID, "style-checker"), user, withTool("run_linter"))...,
 	)(jitterD(200*time.Millisecond))
 	in, out = randTokens(2000, 4000, 300, 700)
-	span(tracer, styleCtx, "style-checker/suggest-improvements",
+	spanLLM(tracer, styleCtx, "style-checker/suggest-improvements",
 		combine(baseAttrs(projectID, runID, "style-checker"), user,
 			withLLM("claude-haiku-4-5", "anthropic", in, out))...,
 	)(jitterD(280*time.Millisecond))
@@ -543,7 +543,7 @@ func scenarioSecurityScan(ctx context.Context, tracer trace.Tracer, projectID, u
 	}
 
 	in, out := randTokens(2000, 5000, 400, 900)
-	span(tracer, rootCtx, "security-scanner/prioritize-findings",
+	spanLLM(tracer, rootCtx, "security-scanner/prioritize-findings",
 		combine(baseAttrs(projectID, runID, "security-scanner"), user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(450*time.Millisecond))
@@ -631,6 +631,29 @@ func span(tracer trace.Tracer, ctx context.Context, name string, attrs ...attrib
 	}
 }
 
+// spanLLM is like span but adds a stream.first_token event on ~50% of calls,
+// simulating LLM streaming with realistic TTFT values (100–800 ms after start).
+func spanLLM(tracer trace.Tracer, ctx context.Context, name string, attrs ...attribute.KeyValue) func(time.Duration) {
+	startTime := time.Now()
+	_, s := tracer.Start(ctx, name, trace.WithAttributes(attrs...))
+	return func(d time.Duration) {
+		if rand.Intn(2) == 0 {
+			ttftDelay := time.Duration(100+rand.Intn(700)) * time.Millisecond
+			// Only add the event if the delay is within the span duration.
+			if ttftDelay < d {
+				time.Sleep(ttftDelay)
+				s.AddEvent("stream.first_token", trace.WithTimestamp(startTime.Add(ttftDelay)))
+				time.Sleep(d - ttftDelay)
+			} else {
+				time.Sleep(d)
+			}
+		} else {
+			time.Sleep(d)
+		}
+		s.End()
+	}
+}
+
 // rv returns a random int in [min, max).
 func rv(min, max int) int {
 	return min + rand.Intn(max-min)
@@ -657,7 +680,7 @@ func scenarioSupportTriageSession(ctx context.Context, tracer trace.Tracer, proj
 		combine(baseAttrs(projectID, runID, "triage-agent"), sess, user, withTool("fetch_customer_profile"))...,
 	)(jitterD(30 * time.Millisecond))
 
-	span(tracer, rootCtx, "triage-agent/classify",
+	spanLLM(tracer, rootCtx, "triage-agent/classify",
 		combine(baseAttrs(projectID, runID, "triage-agent"), sess, user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(400, 800), rv(80, 160)))...,
 	)(jitterD(120 * time.Millisecond))
@@ -674,7 +697,7 @@ func scenarioSupportTriageSession(ctx context.Context, tracer trace.Tracer, proj
 	)(jitterD(80 * time.Millisecond))
 
 	in, out := randTokens(600, 1800, 200, 600)
-	span(tracer, kbCtx, "kb-agent/draft-response",
+	spanLLM(tracer, kbCtx, "kb-agent/draft-response",
 		combine(baseAttrs(projectID, runID, "kb-agent"), sess, user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(300 * time.Millisecond))
@@ -682,7 +705,7 @@ func scenarioSupportTriageSession(ctx context.Context, tracer trace.Tracer, proj
 	kbHandoff.End()
 
 	in, out = randTokens(500, 1200, 150, 400)
-	span(tracer, rootCtx, "triage-agent/compose-reply",
+	spanLLM(tracer, rootCtx, "triage-agent/compose-reply",
 		combine(baseAttrs(projectID, runID, "triage-agent"), sess, user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(250 * time.Millisecond))
@@ -708,7 +731,7 @@ func scenarioSupportEscalationSession(ctx context.Context, tracer trace.Tracer, 
 		combine(baseAttrs(projectID, runID, "triage-agent"), sess, user, withTool("fetch_customer_profile"))...,
 	)(jitterD(25 * time.Millisecond))
 
-	span(tracer, rootCtx, "triage-agent/classify",
+	spanLLM(tracer, rootCtx, "triage-agent/classify",
 		combine(baseAttrs(projectID, runID, "triage-agent"), sess, user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(400, 900), rv(80, 180)))...,
 	)(jitterD(100 * time.Millisecond))
@@ -722,7 +745,7 @@ func scenarioSupportEscalationSession(ctx context.Context, tracer trace.Tracer, 
 	span(tracer, kbCtx, "tool/search_knowledge_base",
 		combine(baseAttrs(projectID, runID, "kb-agent"), sess, user, withTool("search_knowledge_base"))...,
 	)(jitterD(90 * time.Millisecond))
-	span(tracer, kbCtx, "kb-agent/no-match",
+	spanLLM(tracer, kbCtx, "kb-agent/no-match",
 		combine(baseAttrs(projectID, runID, "kb-agent"), sess, user,
 			withLLM("claude-haiku-4-5", "anthropic", rv(300, 700), rv(40, 80)))...,
 	)(jitterD(100 * time.Millisecond))

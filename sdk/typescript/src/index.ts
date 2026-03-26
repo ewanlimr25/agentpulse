@@ -28,5 +28,7 @@ export type {
 export { recordLlmUsage } from './usage.js'
 export type { LlmUsage } from './usage.js'
 
+export { recordStreamFirstToken } from './streaming.js'
+
 export * as attributes from './generated/attributes.js'
 export type { AgentSpanKind } from './generated/attributes.js'

@@ -54,6 +54,9 @@ type Span struct {
 	Attributes    map[string]string
 	ResourceAttrs map[string]string
 	Events        []SpanEvent
+
+	// TtftMs is time-to-first-token in milliseconds. Zero for non-streaming spans.
+	TtftMs float64
 }
 
 // SpanEvent represents a timed annotation on a span.

@@ -34,6 +34,9 @@ export interface Run {
   LoopDetected?: boolean;
   SessionID?: string;
   UserID?: string;
+  TtftP50Ms?: number;
+  TtftP95Ms?: number;
+  StreamingSpanCount?: number;
 }
 
 export interface Session {
@@ -119,6 +122,7 @@ export interface Span {
   Attributes: Record<string, string>;
   ResourceAttrs: Record<string, string>;
   Events: SpanEvent[];
+  TtftMs?: number;
 }
 
 export type NodeType = "agent" | "tool" | "llm" | "memory";

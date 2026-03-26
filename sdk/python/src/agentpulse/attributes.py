@@ -53,3 +53,7 @@ HANDOFF_TARGET = "agentpulse.handoff.target_agent"
 # ── Memory ────────────────────────────────────────────────────────────────────
 
 MEMORY_KEY = "agentpulse.memory.key"
+
+# ── Streaming ─────────────────────────────────────────────────────────────────
+
+TTFT_MS = "agentpulse.ttft_ms"

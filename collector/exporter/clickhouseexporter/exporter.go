@@ -54,7 +54,7 @@ func (e *tracesExporter) Start(ctx context.Context, _ component.Host) error {
 	return nil
 }
 
-// probeSchema verifies the spans table has the user_id column.
+// probeSchema verifies the spans table has the user_id and ttft_ms columns.
 // This prevents silent span data loss if migrations have not yet been applied.
 func (e *tracesExporter) probeSchema(ctx context.Context) error {
 	conn, err := connect(e.cfg)
@@ -62,8 +62,8 @@ func (e *tracesExporter) probeSchema(ctx context.Context) error {
 		return fmt.Errorf("connecting to clickhouse: %w", err)
 	}
 	defer conn.Close()
-	if err := conn.Exec(ctx, fmt.Sprintf("SELECT user_id FROM %s.%s LIMIT 0", e.cfg.Database, e.cfg.Table)); err != nil {
-		return fmt.Errorf("user_id column missing from %s.%s — run migration 009_user_id.sql before starting the collector: %w", e.cfg.Database, e.cfg.Table, err)
+	if err := conn.Exec(ctx, fmt.Sprintf("SELECT user_id, ttft_ms FROM %s.%s LIMIT 0", e.cfg.Database, e.cfg.Table)); err != nil {
+		return fmt.Errorf("user_id or ttft_ms column missing from %s.%s — run migrations 009_user_id.sql and 013_ttft.sql before starting the collector: %w", e.cfg.Database, e.cfg.Table, err)
 	}
 	return nil
 }
@@ -190,7 +190,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 		agent_span_kind, agent_name, model_id,
 		span_name, service_name, status_code, status_message,
 		start_time, end_time,
-		input_tokens, output_tokens, cost_usd,
+		input_tokens, output_tokens, cost_usd, ttft_ms,
 		attributes, resource_attrs, events
 	) VALUES`, c.cfg.Database, c.cfg.Table))
 	if err != nil {
@@ -204,7 +204,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 			r.AgentSpanKind, r.AgentName, r.ModelID,
 			r.SpanName, r.ServiceName, r.StatusCode, r.StatusMessage,
 			r.StartTime, r.EndTime,
-			r.InputTokens, r.OutputTokens, r.CostUSD,
+			r.InputTokens, r.OutputTokens, r.CostUSD, r.TtftMs,
 			r.Attributes, r.ResourceAttrs, r.Events,
 		); err != nil {
 			return fmt.Errorf("appending row: %w", err)

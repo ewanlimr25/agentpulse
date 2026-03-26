@@ -3,6 +3,7 @@ package clickhouse
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -31,7 +32,8 @@ SELECT
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
-    error_count
+    error_count,
+    ttft_p50_ms, ttft_p95_ms, streaming_span_count
 FROM run_metrics
 WHERE project_id = ?
 ORDER BY min_start DESC
@@ -48,7 +50,8 @@ SELECT
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
-    error_count
+    error_count,
+    ttft_p50_ms, ttft_p95_ms, streaming_span_count
 FROM run_metrics
 WHERE run_id = ?
 LIMIT 1
@@ -60,7 +63,8 @@ SELECT
     min_start, max_end,
     span_count, llm_calls, tool_calls,
     input_tokens, output_tokens, total_tokens, total_cost_usd,
-    error_count
+    error_count,
+    ttft_p50_ms, ttft_p95_ms, streaming_span_count
 FROM run_metrics
 WHERE project_id = ? AND session_id = ?
 ORDER BY min_start ASC
@@ -171,6 +175,7 @@ func scanRun(rows driver.Rows) (*domain.Run, error) {
 		&r.SpanCount, &r.LLMCallCount, &r.ToolCallCount,
 		&r.TotalInputTokens, &r.TotalOutputTokens, &r.TotalTokens, &r.TotalCostUSD,
 		&r.ErrorCount,
+		&r.TtftP50Ms, &r.TtftP95Ms, &r.StreamingSpanCount,
 	); err != nil {
 		return nil, fmt.Errorf("run_store scan: %w", err)
 	}
@@ -181,6 +186,13 @@ func scanRun(rows driver.Rows) (*domain.Run, error) {
 		r.Status = "error"
 	} else {
 		r.Status = "ok"
+	}
+	// Guard against NaN from quantileIf when no streaming spans exist.
+	if math.IsNaN(r.TtftP50Ms) {
+		r.TtftP50Ms = 0
+	}
+	if math.IsNaN(r.TtftP95Ms) {
+		r.TtftP95Ms = 0
 	}
 	return r, nil
 }
