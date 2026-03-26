@@ -115,7 +115,29 @@ These are the same system from two angles — automated CI gates need human feed
 
 ---
 
-### G. Hardcoded Defaults Warning
+### G. Multi-Model Eval Scoring
+
+**Why it matters:** a single LLM judge (currently Claude Haiku) introduces model-specific bias — Haiku may consistently score its own outputs higher, miss subtle reasoning errors, or have blind spots for certain domains. Letting users configure multiple judge models and comparing their verdicts gives a much more reliable signal. Disagreement between models is itself a useful signal — high variance across judges flags spans worth human review.
+
+**User-facing behaviour:**
+- Per-project setting: toggle "Multi-model evals" on/off; when on, select 2–3 judge models from a dropdown (e.g. Claude Haiku, GPT-4o Mini, Gemini Flash)
+- Each configured model independently scores the span using the same eval prompt
+- `span_evals` stores one row per `(span_id, eval_name, judge_model)` — the existing `ReplacingMergeTree` dedup key needs `judge_model` added
+- Eval summary shows per-model scores side-by-side with each model's full reasoning text, plus a computed consensus score (mean) and a disagreement indicator when scores diverge by more than a configurable threshold (default ±0.2)
+- Quality Gates (item C) use the consensus score for pass/fail decisions
+
+**Implementation pieces:**
+- `eval_configs` Postgres table gains a `judge_models` `text[]` column (default `["claude-haiku-4-5"]`)
+- Eval worker spawns parallel judge calls, one goroutine per model; writes a row for each
+- New `EvalJudgeModel` field on `SpanEval` domain type and ClickHouse schema (`015_eval_judge_model.sql`)
+- `GET /runs/{runID}/evals` response groups scores by eval name, returns array of `{model, score, reasoning}` per eval
+- Frontend: eval panel in span detail drawer expands to show a model-comparison table; consensus badge on collapsed view
+
+**Effort:** ~4 days.
+
+---
+
+### H. Hardcoded Defaults Warning
 
 Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `agentpulse:agentpulse` credentials. One-line change; do it opportunistically while touching config files for another item.
 
@@ -132,4 +154,5 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 | D | Payload Offloading (S3) | 3d | 🟠 Tier 2 |
 | E | Team & Enterprise Auth (phases 1+3 first) | 1.5–4w | 🟠 Tier 2 |
 | F | Agent Replay | 2–3w | 🟡 Tier 3 |
-| G | Hardcoded defaults warning | 30m | 🟢 Opportunistic |
+| G | Multi-Model Eval Scoring | 4d | 🟡 Tier 3 |
+| H | Hardcoded defaults warning | 30m | 🟢 Opportunistic |
