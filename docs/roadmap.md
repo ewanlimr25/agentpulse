@@ -4,9 +4,9 @@ Last updated: 2026-03-29
 
 Items #1–#12 are complete. This document covers everything remaining, consolidated from the original tier 2/3 items and the enterprise/security feedback round.
 
-**Progress since last update (2026-03-29):**
-- Quality Gates CI gate (automated half of item C) shipped: `agentpulse eval check` CLI, `GET /evals/baseline` endpoint, rate limiting on project-scoped routes, GitHub Actions docs
-- Semantic search security hardened: `escapeLike` bracket fix, rune-aware `extractSnippet` (UTF-8 panic), `span_kind` enum validation, load-more accumulation bug fixed
+**Completed since last update (2026-03-29):**
+- **Quality Gates** (item C below) shipped: `agentpulse eval check` CLI, `GET /evals/baseline` endpoint, rate limiting on project-scoped routes, GitHub Actions docs
+- Semantic search security hardened: `escapeLike` bracket fix, rune-aware `extractSnippet`, `span_kind` enum validation, load-more accumulation bug fixed
 - Streaming Span Support (#12) audited and confirmed fully complete
 
 ---
@@ -27,11 +27,11 @@ The run-scoped API routes (`GET /runs/{runID}`, `/spans`, `/evals`, `/loops`, `/
 
 ### A. API Rate Limiting
 
-**Why first:** a stuck agent in an infinite loop will hammer the collector and API right now. No throttling exists anywhere in the stack.
+**Why first:** a stuck agent in an infinite loop will hammer the collector and API right now. Project-scoped backend routes have a 60 req/min cap added in the quality gates pass, but the collector's `POST /v1/traces` and run-scoped routes are still unprotected.
 
-**Surfaces to protect:**
+**Remaining surfaces:**
 - `POST /v1/traces` in the collector — token-bucket per `agentpulse.project_id` attribute; drop/429 excess batches
-- Backend API — per-IP or per-Bearer-token limits using `go-chi/httprate`; tighter limits on expensive endpoints (search, compare)
+- Run-scoped API routes — same per-project sliding window already used on project routes
 
 **Effort:** ~1 day.
 
@@ -53,27 +53,52 @@ The run-scoped API routes (`GET /runs/{runID}`, `/spans`, `/evals`, `/loops`, `/
 
 ## Tier 2 — Core Product Completeness
 
-### C. Quality Gates + Human-in-the-Loop Evals
+### C. Quality Gates ✅ DONE (2026-03-29)
 
-These are the same system from two angles — automated CI gates need human feedback as ground truth.
-
-**Quality Gates — ✅ DONE (2026-03-29)**
-- `GET /projects/{id}/evals/baseline` endpoint — avg score over last N runs, per eval type
-- `agentpulse eval check` CLI — exit 0=pass, 1=fail, 2=error; `--threshold`, `--eval-type`, `--runs`, `--min-runs`, `--fail-open`, `--json` flags
-- GitHub Actions example in `docs/github-actions-eval.yml`
-- Rate limiting (60 req/min per project) on all project-scoped routes
-
-**Human-in-the-Loop — still needed:**
-- `POST /projects/{id}/runs/{runID}/spans/{spanID}/feedback` — `{rating: "good"|"bad", corrected_output?: string}`
-- New `span_feedback` Postgres table
-- Frontend: thumbs up/down on span detail drawer, correction text box
-- Feedback counts and weighted scores surfaced in eval summary; quality gate baseline incorporates ratings
-
-**Effort:** ~2 days (HitL portion only).
+- `GET /projects/{id}/evals/baseline` — avg score over last N runs, per eval type, rate-limited
+- `agentpulse eval check` CLI — exit 0=pass, 1=fail, 2=error; `--threshold`, `--eval-type`, `--runs`, `--min-runs`, `--fail-open`, `--json` flags; SSRF-safe endpoint validation
+- GitHub Actions example in `docs/github-actions-eval.yml` (3 job variants)
+- 44 tests across CLI, handler, rate limiter, ClickHouse store
 
 ---
 
-### D. Payload Offloading (Object Storage)
+### D. Human-in-the-Loop Evals
+
+**Why here:** the quality gate baseline today is driven purely by the LLM judge. Human thumbs-up/down on individual span outputs is the ground truth that corrects judge drift and builds a per-project calibration dataset. This is the natural follow-on to quality gates — it makes the scores you're gating on trustworthy.
+
+**Implementation:**
+- `POST /projects/{id}/runs/{runID}/spans/{spanID}/feedback` — `{rating: "good"|"bad", corrected_output?: string}`
+- New `span_feedback` Postgres table (span_id, project_id, rating, corrected_output, created_at)
+- Frontend: thumbs up/down buttons on span detail drawer; optional correction text box
+- Feedback counts and weighted scores surfaced in eval summary
+- `GET /evals/baseline` incorporates human ratings: human "bad" overrides judge score to 0; human "good" floors score at 0.8
+
+**Effort:** ~2 days.
+
+---
+
+### E. Multi-Model Eval Scoring
+
+**Why after HitL:** once human ratings exist, you have ground truth to compare judge models against. Running multiple judges and surfacing disagreement is most useful when you can already see which judge is wrong. Disagreement between judges is itself a signal — high variance flags spans for human review.
+
+**User-facing behaviour:**
+- Per-project setting: toggle "Multi-model evals"; select 2–3 judge models (e.g. Claude Haiku, GPT-4o Mini, Gemini Flash)
+- Each model independently scores the span using the same eval prompt
+- Eval summary shows per-model scores side-by-side with reasoning, plus consensus score (mean) and disagreement indicator (default threshold ±0.2)
+- Quality Gates use the consensus score for pass/fail decisions
+
+**Implementation pieces:**
+- `eval_configs` gains `judge_models text[]` column (default `["claude-haiku-4-5"]`)
+- Eval worker spawns parallel judge calls, one goroutine per model
+- `015_eval_judge_model.sql` adds `judge_model` to `span_evals` ReplacingMergeTree key
+- `GET /runs/{runID}/evals` groups scores by eval name, returns `[{model, score, reasoning}]` per eval
+- Frontend: model-comparison table in span detail eval panel; consensus badge on collapsed view
+
+**Effort:** ~4 days.
+
+---
+
+### F. Payload Offloading (Object Storage)
 
 **Why:** `gen_ai.prompt` and `gen_ai.completion` are stored as string columns in ClickHouse. At production traffic with long-context models, these become the dominant storage cost and degrade query performance. The `S3Config` struct already exists in `config.go`.
 
@@ -86,7 +111,7 @@ These are the same system from two angles — automated CI gates need human feed
 
 ---
 
-### E. Team & Enterprise Auth Migration
+### G. Team & Enterprise Auth Migration
 
 **Goal:** migrate from single-user API-key model to multi-tenant org/team structure. Bearer tokens (SDK service credentials) and human JWT auth run as two permanent parallel auth paths — SDK integration never requires a login.
 
@@ -107,7 +132,7 @@ These are the same system from two angles — automated CI gates need human feed
 
 ## Tier 3 — Strategic Differentiators
 
-### F. Agent Replay / Sandbox Debugging
+### H. Agent Replay / Sandbox Debugging
 
 **Why it's a moat:** no competitor does this. A developer can take a failed production trace and replay it locally with mocked tool responses (sourced from the original `tool.input`/`tool.output` span attributes), reproducing a prod failure deterministically.
 
@@ -121,29 +146,7 @@ These are the same system from two angles — automated CI gates need human feed
 
 ---
 
-### G. Multi-Model Eval Scoring
-
-**Why it matters:** a single LLM judge (currently Claude Haiku) introduces model-specific bias — Haiku may consistently score its own outputs higher, miss subtle reasoning errors, or have blind spots for certain domains. Letting users configure multiple judge models and comparing their verdicts gives a much more reliable signal. Disagreement between models is itself a useful signal — high variance across judges flags spans worth human review.
-
-**User-facing behaviour:**
-- Per-project setting: toggle "Multi-model evals" on/off; when on, select 2–3 judge models from a dropdown (e.g. Claude Haiku, GPT-4o Mini, Gemini Flash)
-- Each configured model independently scores the span using the same eval prompt
-- `span_evals` stores one row per `(span_id, eval_name, judge_model)` — the existing `ReplacingMergeTree` dedup key needs `judge_model` added
-- Eval summary shows per-model scores side-by-side with each model's full reasoning text, plus a computed consensus score (mean) and a disagreement indicator when scores diverge by more than a configurable threshold (default ±0.2)
-- Quality Gates (item C) use the consensus score for pass/fail decisions
-
-**Implementation pieces:**
-- `eval_configs` Postgres table gains a `judge_models` `text[]` column (default `["claude-haiku-4-5"]`)
-- Eval worker spawns parallel judge calls, one goroutine per model; writes a row for each
-- New `EvalJudgeModel` field on `SpanEval` domain type and ClickHouse schema (`015_eval_judge_model.sql`)
-- `GET /runs/{runID}/evals` response groups scores by eval name, returns array of `{model, score, reasoning}` per eval
-- Frontend: eval panel in span detail drawer expands to show a model-comparison table; consensus badge on collapsed view
-
-**Effort:** ~4 days.
-
----
-
-### H. Hardcoded Defaults Warning
+### I. Hardcoded Defaults Warning
 
 Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `agentpulse:agentpulse` credentials. One-line change; do it opportunistically while touching config files for another item.
 
@@ -154,11 +157,12 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 | # | Item | Effort | Priority |
 |---|------|--------|----------|
 | 0 | Fix IDOR on run routes | ~2h | 🔴 Fix now |
-| A | API Rate Limiting | 1d | 🔴 Tier 1 |
+| A | API Rate Limiting (collector + run routes) | 1d | 🔴 Tier 1 |
 | B | PII / Secret Redaction | 3d | 🔴 Tier 1 |
-| C | Quality Gates + HitL Evals | 4d | 🟠 Tier 2 |
-| D | Payload Offloading (S3) | 3d | 🟠 Tier 2 |
-| E | Team & Enterprise Auth (phases 1+3 first) | 1.5–4w | 🟠 Tier 2 |
-| F | Agent Replay | 2–3w | 🟡 Tier 3 |
-| G | Multi-Model Eval Scoring | 4d | 🟡 Tier 3 |
-| H | Hardcoded defaults warning | 30m | 🟢 Opportunistic |
+| C | Quality Gates | ✅ Done | — |
+| D | Human-in-the-Loop Evals | 2d | 🟠 Tier 2 |
+| E | Multi-Model Eval Scoring | 4d | 🟠 Tier 2 |
+| F | Payload Offloading (S3) | 3d | 🟠 Tier 2 |
+| G | Team & Enterprise Auth (phases 1+3 first) | 1.5–4w | 🟠 Tier 2 |
+| H | Agent Replay / Sandbox Debugging | 2–3w | 🟡 Tier 3 |
+| I | Hardcoded defaults warning | 30m | 🟢 Opportunistic |
