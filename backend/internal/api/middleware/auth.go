@@ -12,6 +12,48 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
+// RunAuth returns a middleware that authenticates run-scoped routes.
+//
+// Unlike BearerAuth (which checks {projectID} in the URL), run-scoped routes
+// carry only a {runID}. This middleware resolves the run's project_id from
+// ClickHouse, then validates the Bearer token belongs to that project.
+//
+// Returns 403 (not 404) for non-existent runs to prevent an existence oracle
+// attack via timing differences.
+func RunAuth(projects store.ProjectStore, runs store.RunStore) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token, ok := extractBearer(r)
+			if !ok {
+				httputil.Error(w, http.StatusUnauthorized, "missing or malformed Authorization header")
+				return
+			}
+
+			hash := hashToken(token)
+			project, err := projects.GetByAPIKeyHash(r.Context(), hash)
+			if err != nil {
+				httputil.Error(w, http.StatusUnauthorized, "invalid API key")
+				return
+			}
+
+			runID := chi.URLParam(r, "runID")
+			runProjectID, err := runs.GetProjectID(r.Context(), runID)
+			if err != nil {
+				// Return 403 rather than 404 to avoid leaking run existence.
+				httputil.Error(w, http.StatusForbidden, "access denied")
+				return
+			}
+
+			if project.ID != runProjectID {
+				httputil.Error(w, http.StatusForbidden, "API key does not belong to this run's project")
+				return
+			}
+
+			next.ServeHTTP(w, r.WithContext(WithProject(r.Context(), project)))
+		})
+	}
+}
+
 // BearerAuth returns a middleware that enforces Bearer token authentication.
 //
 // On every request it:

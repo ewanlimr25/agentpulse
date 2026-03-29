@@ -57,6 +57,10 @@ WHERE run_id = ?
 LIMIT 1
 `
 
+const getRunProjectIDQuery = `
+SELECT project_id FROM run_metrics WHERE run_id = ? LIMIT 1
+`
+
 const listRunsBySessionQuery = `
 SELECT
     run_id, project_id, trace_id, session_id, user_id,
@@ -86,6 +90,15 @@ func (s *RunStore) List(ctx context.Context, projectID string, limit, offset int
 		runs = append(runs, r)
 	}
 	return runs, rows.Err()
+}
+
+func (s *RunStore) GetProjectID(ctx context.Context, runID string) (string, error) {
+	row := s.conn.QueryRow(ctx, getRunProjectIDQuery, runID)
+	var projectID string
+	if err := row.Scan(&projectID); err != nil {
+		return "", fmt.Errorf("run %q not found", runID)
+	}
+	return projectID, nil
 }
 
 func (s *RunStore) Count(ctx context.Context, projectID string) (int, error) {

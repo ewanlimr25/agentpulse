@@ -56,6 +56,7 @@ func NewRouter(
 	searchHandler := handler.NewSearchHandler(search)
 
 	bearerAuth := middleware.BearerAuth(projects)
+	runAuth := middleware.RunAuth(projects, runs)
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -107,11 +108,12 @@ func NewRouter(
 			r.Get("/search", searchHandler.Search)
 		})
 
-		// ── Run-scoped routes (unauthenticated for now) ───────────────────────
-		// These routes don't carry a projectID in the URL, so per-project auth
-		// can't be applied without an additional DB lookup. Left open for MVP;
-		// a future auth pass will add project resolution from the run record.
+		// ── Run-scoped routes ─────────────────────────────────────────────────
+		// RunAuth resolves the run's project_id from ClickHouse and validates
+		// the Bearer token belongs to that project, preventing IDOR.
 		r.Route("/runs/{runID}", func(r chi.Router) {
+			r.Use(runAuth)
+			r.Use(middleware.RateLimit)
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
 			r.Get("/evals", evalHandler.ListByRun)

@@ -18,17 +18,17 @@ export default function TopologyPage({
 
   const { data: topology, isLoading, error } = useQuery({
     queryKey: ["topology", runId],
-    queryFn: () => runsApi.topology(runId),
+    queryFn: () => runsApi.topology(runId, projectId),
   });
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
-    queryFn: () => runsApi.get(runId),
+    queryFn: () => runsApi.get(runId, projectId),
   });
 
   const { data: spans } = useQuery({
     queryKey: ["spans", runId],
-    queryFn: () => runsApi.spans(runId),
+    queryFn: () => runsApi.spans(runId, projectId),
   });
 
   function handleNodeClick(nodeId: string) {

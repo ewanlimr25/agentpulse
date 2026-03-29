@@ -21,10 +21,17 @@ function extractProjectId(path: string): string | null {
   return m ? m[1] : null;
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const projectId = extractProjectId(path);
+interface ApiFetchOptions extends RequestInit {
+  /** Explicit project ID to use for Bearer token lookup. Use when the path
+   *  does not contain /api/v1/projects/{id}/ (e.g. run-scoped routes). */
+  projectId?: string;
+}
+
+async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
+  const projectId = init?.projectId ?? extractProjectId(path);
   const apiKey = projectId ? getApiKey(projectId) : null;
 
+  const { projectId: _, ...fetchInit } = init ?? {};
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (apiKey) {
     headers["Authorization"] = `Bearer ${apiKey}`;
@@ -32,7 +39,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   const res = await fetch(`${BASE_URL}${path}`, {
     headers,
-    ...init,
+    ...fetchInit,
   });
   const body = await res.json();
   if (res.status === 401 || res.status === 403) {
@@ -63,10 +70,12 @@ export const runsApi = {
     apiFetch<RunsListResponse>(
       `/api/v1/projects/${projectId}/runs?limit=${limit}&offset=${offset}`
     ),
-  get: (runId: string) => apiFetch<Run>(`/api/v1/runs/${runId}`),
-  spans: (runId: string) => apiFetch<Span[]>(`/api/v1/runs/${runId}/spans`),
-  topology: (runId: string) =>
-    apiFetch<Topology>(`/api/v1/runs/${runId}/topology`),
+  get: (runId: string, projectId: string) =>
+    apiFetch<Run>(`/api/v1/runs/${runId}`, { projectId }),
+  spans: (runId: string, projectId: string) =>
+    apiFetch<Span[]>(`/api/v1/runs/${runId}/spans`, { projectId }),
+  topology: (runId: string, projectId: string) =>
+    apiFetch<Topology>(`/api/v1/runs/${runId}/topology`, { projectId }),
   compare: (projectId: string, a: string, b: string) =>
     apiFetch<RunComparison>(
       `/api/v1/projects/${projectId}/runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`
@@ -76,8 +85,8 @@ export const runsApi = {
 // ── Evals ─────────────────────────────────────────────────────────────────────
 
 export const evalsApi = {
-  listByRun: (runId: string) =>
-    apiFetch<SpanEval[]>(`/api/v1/runs/${runId}/evals`),
+  listByRun: (runId: string, projectId: string) =>
+    apiFetch<SpanEval[]>(`/api/v1/runs/${runId}/evals`, { projectId }),
   summaryByProject: (projectId: string) =>
     apiFetch<RunEvalSummary[]>(`/api/v1/projects/${projectId}/evals/summary`),
   listConfigs: (projectId: string) =>
@@ -169,8 +178,8 @@ export const alertsApi = {
 // ── Loops ─────────────────────────────────────────────────────────────────────
 
 export const loopsApi = {
-  listByRun: (runId: string) =>
-    apiFetch<RunLoop[]>(`/api/v1/runs/${runId}/loops`),
+  listByRun: (runId: string, projectId: string) =>
+    apiFetch<RunLoop[]>(`/api/v1/runs/${runId}/loops`, { projectId }),
 };
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

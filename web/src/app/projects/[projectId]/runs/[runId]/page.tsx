@@ -76,22 +76,22 @@ export default function RunPage({
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
-    queryFn: () => runsApi.get(runId),
+    queryFn: () => runsApi.get(runId, projectId),
   });
 
   const { data: spans, isLoading: spansLoading } = useQuery({
     queryKey: ["spans", runId],
-    queryFn: () => runsApi.spans(runId),
+    queryFn: () => runsApi.spans(runId, projectId),
   });
 
   const { data: evals } = useQuery({
     queryKey: ["evals", runId],
-    queryFn: () => evalsApi.listByRun(runId),
+    queryFn: () => evalsApi.listByRun(runId, projectId),
   });
 
   const { data: loops } = useQuery({
     queryKey: ["loops", runId],
-    queryFn: () => loopsApi.listByRun(runId),
+    queryFn: () => loopsApi.listByRun(runId, projectId),
   });
 
   // Build a map from spanId → all evals for that span (one per eval type).

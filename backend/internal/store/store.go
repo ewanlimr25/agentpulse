@@ -27,6 +27,10 @@ type RunStore interface {
 	// ListBySession returns all runs for a session, oldest first.
 	// projectID is required to enforce project-scoped access at the store layer.
 	ListBySession(ctx context.Context, projectID, sessionID string) ([]*domain.Run, error)
+	// GetProjectID returns the project_id for a given run_id.
+	// Used by RunAuth middleware to resolve ownership without fetching full run metrics.
+	// Returns an error if the run does not exist.
+	GetProjectID(ctx context.Context, runID string) (string, error)
 }
 
 // SessionStore reads session aggregates from the ClickHouse session_agg MV.

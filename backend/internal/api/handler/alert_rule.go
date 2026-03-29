@@ -32,6 +32,9 @@ func (h *AlertRuleHandler) Routes(r chi.Router) {
 // ListRecent is mounted at GET /api/v1/alerts/events/recent (no project scope).
 func (h *AlertRuleHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
 	limit := intQueryParam(r, "limit", 20)
+	if limit > 100 {
+		limit = 100
+	}
 	events, err := h.rules.ListRecentEvents(r.Context(), limit)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list recent alert events")
@@ -101,6 +104,12 @@ func (h *AlertRuleHandler) createRule(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, msg)
 		return
 	}
+	if req.WebhookURL != nil && *req.WebhookURL != "" {
+		if msg := validateWebhookURL(*req.WebhookURL); msg != "" {
+			httputil.Error(w, http.StatusBadRequest, msg)
+			return
+		}
+	}
 
 	rule := &domain.AlertRule{
 		ID:            uuid.New().String(),
@@ -125,11 +134,16 @@ func (h *AlertRuleHandler) createRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	ruleID := chi.URLParam(r, "ruleID")
 
 	existing, err := h.rules.GetRule(r.Context(), ruleID)
 	if err != nil {
 		httputil.Error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	if existing.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "rule does not belong to this project")
 		return
 	}
 
@@ -141,6 +155,12 @@ func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 	if msg := req.validate(); msg != "" {
 		httputil.Error(w, http.StatusBadRequest, msg)
 		return
+	}
+	if req.WebhookURL != nil && *req.WebhookURL != "" {
+		if msg := validateWebhookURL(*req.WebhookURL); msg != "" {
+			httputil.Error(w, http.StatusBadRequest, msg)
+			return
+		}
 	}
 
 	existing.Name = req.Name
@@ -161,7 +181,19 @@ func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AlertRuleHandler) deleteRule(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	ruleID := chi.URLParam(r, "ruleID")
+
+	existing, err := h.rules.GetRule(r.Context(), ruleID)
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	if existing.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "rule does not belong to this project")
+		return
+	}
+
 	if err := h.rules.DeleteRule(r.Context(), ruleID); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to delete alert rule")
 		return

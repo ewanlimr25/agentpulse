@@ -3,13 +3,14 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
+	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
@@ -30,9 +31,30 @@ func (h *BudgetHandler) Routes(r chi.Router) {
 	r.Get("/alerts", h.listAlerts)
 }
 
+// validateWebhookURL returns an error string if the URL is not a safe http/https URL.
+func validateWebhookURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "webhook_url is not a valid URL"
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "webhook_url must use http or https scheme"
+	}
+	if u.Host == "" {
+		return "webhook_url must have a host"
+	}
+	if u.User != nil {
+		return "webhook_url must not include credentials"
+	}
+	return ""
+}
+
 // ListRecent is mounted at GET /api/v1/budget/alerts/recent (no project scope).
 func (h *BudgetHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
 	limit := intQueryParam(r, "limit", 20)
+	if limit > 100 {
+		limit = 100
+	}
 	alerts, err := h.budget.ListRecentAlerts(r.Context(), limit)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list recent alerts")
@@ -73,6 +95,12 @@ func (h *BudgetHandler) createRule(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusBadRequest, "name and threshold_usd > 0 required")
 		return
 	}
+	if req.WebhookURL != nil && *req.WebhookURL != "" {
+		if msg := validateWebhookURL(*req.WebhookURL); msg != "" {
+			httputil.Error(w, http.StatusBadRequest, msg)
+			return
+		}
+	}
 
 	rule := &domain.BudgetRule{
 		ID:           uuid.New().String(),
@@ -96,6 +124,7 @@ func (h *BudgetHandler) createRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BudgetHandler) updateRule(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	ruleID := chi.URLParam(r, "ruleID")
 
 	existing, err := h.budget.GetRule(r.Context(), ruleID)
@@ -103,11 +132,21 @@ func (h *BudgetHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusNotFound, "rule not found")
 		return
 	}
+	if existing.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "rule does not belong to this project")
+		return
+	}
 
 	var req ruleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httputil.Error(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	if req.WebhookURL != nil && *req.WebhookURL != "" {
+		if msg := validateWebhookURL(*req.WebhookURL); msg != "" {
+			httputil.Error(w, http.StatusBadRequest, msg)
+			return
+		}
 	}
 
 	existing.Name = req.Name
@@ -127,7 +166,19 @@ func (h *BudgetHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BudgetHandler) deleteRule(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	ruleID := chi.URLParam(r, "ruleID")
+
+	existing, err := h.budget.GetRule(r.Context(), ruleID)
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	if existing.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "rule does not belong to this project")
+		return
+	}
+
 	if err := h.budget.DeleteRule(r.Context(), ruleID); err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to delete rule")
 		return
