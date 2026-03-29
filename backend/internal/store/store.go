@@ -79,7 +79,7 @@ type BudgetStore interface {
 	UpdateRule(ctx context.Context, r *domain.BudgetRule) error
 	DeleteRule(ctx context.Context, id string) error
 	ListAlerts(ctx context.Context, projectID string, limit int) ([]*domain.BudgetAlert, error)
-	ListRecentAlerts(ctx context.Context, limit int) ([]*domain.RecentBudgetAlert, error)
+	ListRecentAlerts(ctx context.Context, projectID string, limit int) ([]*domain.RecentBudgetAlert, error)
 }
 
 // EvalStore writes and reads quality scores.
@@ -107,7 +107,7 @@ type AlertRuleStore interface {
 	CreateEvent(ctx context.Context, e *domain.AlertEvent) error
 	// LastEventForRule returns the most recent event for a rule, or nil if none.
 	LastEventForRule(ctx context.Context, ruleID string) (*domain.AlertEvent, error)
-	ListRecentEvents(ctx context.Context, limit int) ([]*domain.RecentAlertEvent, error)
+	ListRecentEvents(ctx context.Context, projectID string, limit int) ([]*domain.RecentAlertEvent, error)
 }
 
 // EvalJobStore manages the async eval work queue in Postgres.

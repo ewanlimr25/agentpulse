@@ -49,13 +49,14 @@ func validateWebhookURL(rawURL string) string {
 	return ""
 }
 
-// ListRecent is mounted at GET /api/v1/budget/alerts/recent (no project scope).
+// ListRecent is mounted at GET /api/v1/projects/{projectID}/budget/alerts/recent.
 func (h *BudgetHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	limit := intQueryParam(r, "limit", 20)
 	if limit > 100 {
 		limit = 100
 	}
-	alerts, err := h.budget.ListRecentAlerts(r.Context(), limit)
+	alerts, err := h.budget.ListRecentAlerts(r.Context(), projectID, limit)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list recent alerts")
 		return

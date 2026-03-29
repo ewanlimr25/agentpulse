@@ -1,13 +1,11 @@
 package middleware
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/agentpulse/agentpulse/backend/internal/authutil"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
@@ -23,13 +21,13 @@ import (
 func RunAuth(projects store.ProjectStore, runs store.RunStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token, ok := extractBearer(r)
+			token, ok := authutil.ExtractBearer(r)
 			if !ok {
 				httputil.Error(w, http.StatusUnauthorized, "missing or malformed Authorization header")
 				return
 			}
 
-			hash := hashToken(token)
+			hash := authutil.HashToken(token)
 			project, err := projects.GetByAPIKeyHash(r.Context(), hash)
 			if err != nil {
 				httputil.Error(w, http.StatusUnauthorized, "invalid API key")
@@ -67,13 +65,13 @@ func RunAuth(projects store.ProjectStore, runs store.RunStore) func(http.Handler
 func BearerAuth(projects store.ProjectStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token, ok := extractBearer(r)
+			token, ok := authutil.ExtractBearer(r)
 			if !ok {
 				httputil.Error(w, http.StatusUnauthorized, "missing or malformed Authorization header")
 				return
 			}
 
-			hash := hashToken(token)
+			hash := authutil.HashToken(token)
 			project, err := projects.GetByAPIKeyHash(r.Context(), hash)
 			if err != nil {
 				httputil.Error(w, http.StatusUnauthorized, "invalid API key")
@@ -94,25 +92,3 @@ func BearerAuth(projects store.ProjectStore) func(http.Handler) http.Handler {
 	}
 }
 
-// extractBearer pulls the raw token from the Authorization header.
-func extractBearer(r *http.Request) (string, bool) {
-	auth := r.Header.Get("Authorization")
-	if auth == "" {
-		return "", false
-	}
-	const prefix = "Bearer "
-	if !strings.HasPrefix(auth, prefix) {
-		return "", false
-	}
-	token := strings.TrimSpace(auth[len(prefix):])
-	if token == "" {
-		return "", false
-	}
-	return token, true
-}
-
-// hashToken returns the lowercase hex-encoded SHA-256 of the token.
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}

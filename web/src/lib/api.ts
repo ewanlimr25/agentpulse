@@ -139,8 +139,8 @@ export const budgetApi = {
     apiFetch<BudgetAlert[]>(
       `/api/v1/projects/${projectId}/budget/alerts?limit=${limit}`
     ),
-  listRecentAlerts: (limit = 20) =>
-    apiFetch<RecentBudgetAlert[]>(`/api/v1/budget/alerts/recent?limit=${limit}`),
+  listRecentAlerts: (projectId: string, limit = 20) =>
+    apiFetch<RecentBudgetAlert[]>(`/api/v1/projects/${projectId}/budget/alerts/recent?limit=${limit}`),
 };
 
 // ── Signal Alerts ─────────────────────────────────────────────────────────────
@@ -171,8 +171,8 @@ export const alertsApi = {
     ),
   listEvents: (projectId: string, limit = 100) =>
     apiFetch<AlertEvent[]>(`/api/v1/projects/${projectId}/alerts/events?limit=${limit}`),
-  listRecentEvents: (limit = 20) =>
-    apiFetch<RecentAlertEvent[]>(`/api/v1/alerts/events/recent?limit=${limit}`),
+  listRecentEvents: (projectId: string, limit = 20) =>
+    apiFetch<RecentAlertEvent[]>(`/api/v1/projects/${projectId}/alerts/events/recent?limit=${limit}`),
 };
 
 // ── Loops ─────────────────────────────────────────────────────────────────────

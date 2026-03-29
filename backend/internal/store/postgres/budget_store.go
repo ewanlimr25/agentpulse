@@ -97,7 +97,7 @@ func (s *BudgetStore) DeleteRule(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *BudgetStore) ListRecentAlerts(ctx context.Context, limit int) ([]*domain.RecentBudgetAlert, error) {
+func (s *BudgetStore) ListRecentAlerts(ctx context.Context, projectID string, limit int) ([]*domain.RecentBudgetAlert, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT ba.id, ba.rule_id, ba.project_id, ba.run_id,
 		       ba.triggered_at, ba.current_cost, ba.threshold_usd, ba.action_taken,
@@ -106,9 +106,10 @@ func (s *BudgetStore) ListRecentAlerts(ctx context.Context, limit int) ([]*domai
 		FROM budget_alerts ba
 		JOIN projects p    ON p.id  = ba.project_id
 		JOIN budget_rules br ON br.id = ba.rule_id
+		WHERE ba.project_id = $1
 		ORDER BY ba.triggered_at DESC
-		LIMIT $1
-	`, limit)
+		LIMIT $2
+	`, projectID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("budget_store list_recent_alerts: %w", err)
 	}

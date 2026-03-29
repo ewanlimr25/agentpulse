@@ -29,13 +29,14 @@ func (h *AlertRuleHandler) Routes(r chi.Router) {
 	r.Get("/events", h.listEvents)
 }
 
-// ListRecent is mounted at GET /api/v1/alerts/events/recent (no project scope).
+// ListRecent is mounted at GET /api/v1/projects/{projectID}/alerts/events/recent.
 func (h *AlertRuleHandler) ListRecent(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
 	limit := intQueryParam(r, "limit", 20)
 	if limit > 100 {
 		limit = 100
 	}
-	events, err := h.rules.ListRecentEvents(r.Context(), limit)
+	events, err := h.rules.ListRecentEvents(r.Context(), projectID, limit)
 	if err != nil {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list recent alert events")
 		return

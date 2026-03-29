@@ -8,6 +8,9 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/agentpulse/agentpulse/backend/internal/authutil"
+	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
 var upgrader = websocket.Upgrader{
@@ -39,9 +42,10 @@ type Event struct {
 
 // Hub manages active WebSocket clients and broadcasts events.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*client]struct{}
-	events  chan Event
+	mu       sync.RWMutex
+	clients  map[*client]struct{}
+	events   chan Event
+	projects store.ProjectStore
 }
 
 type client struct {
@@ -50,10 +54,11 @@ type client struct {
 	send      chan []byte
 }
 
-func NewHub() *Hub {
+func NewHub(projects store.ProjectStore) *Hub {
 	return &Hub{
-		clients: make(map[*client]struct{}),
-		events:  make(chan Event, 256),
+		clients:  make(map[*client]struct{}),
+		events:   make(chan Event, 256),
+		projects: projects,
 	}
 }
 
@@ -79,11 +84,30 @@ func (h *Hub) Publish(evt Event) {
 }
 
 // ServeWS upgrades the HTTP connection and registers the client.
-// Clients subscribe to a specific project via query param ?project_id=.
+// Clients must supply a valid Bearer token and a ?project_id= query param.
+// The token is verified to belong to the requested project before upgrading.
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("project_id")
 	if projectID == "" {
 		http.Error(w, "project_id required", http.StatusBadRequest)
+		return
+	}
+
+	token, ok := authutil.ExtractBearer(r)
+	if !ok {
+		http.Error(w, "missing or malformed Authorization header", http.StatusUnauthorized)
+		return
+	}
+
+	hash := authutil.HashToken(token)
+	project, err := h.projects.GetByAPIKeyHash(r.Context(), hash)
+	if err != nil {
+		http.Error(w, "invalid API key", http.StatusUnauthorized)
+		return
+	}
+
+	if project.ID != projectID {
+		http.Error(w, "API key does not belong to this project", http.StatusForbidden)
 		return
 	}
 

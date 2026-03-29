@@ -67,7 +67,7 @@ func main() {
 	defer stop()
 
 	// ── Alert hub ─────────────────────────────────────────────────────────
-	hub := alert.NewHub()
+	hub := alert.NewHub(projectStore)
 	go hub.Run()
 	go alert.NewPoller(pgPool, hub).Run(ctx)
 	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore).Run(ctx)

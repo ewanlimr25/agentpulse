@@ -181,7 +181,7 @@ func (s *AlertRuleStore) LastEventForRule(ctx context.Context, ruleID string) (*
 	return e, nil
 }
 
-func (s *AlertRuleStore) ListRecentEvents(ctx context.Context, limit int) ([]*domain.RecentAlertEvent, error) {
+func (s *AlertRuleStore) ListRecentEvents(ctx context.Context, projectID string, limit int) ([]*domain.RecentAlertEvent, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT ae.id, ae.rule_id, ae.project_id, ae.triggered_at, ae.signal_type,
 		       ae.current_value, ae.threshold, ae.compare_op, ae.action_taken, ae.metadata,
@@ -190,9 +190,10 @@ func (s *AlertRuleStore) ListRecentEvents(ctx context.Context, limit int) ([]*do
 		FROM alert_events ae
 		JOIN projects    p  ON p.id  = ae.project_id
 		JOIN alert_rules ar ON ar.id = ae.rule_id
+		WHERE ae.project_id = $1
 		ORDER BY ae.triggered_at DESC
-		LIMIT $1
-	`, limit)
+		LIMIT $2
+	`, projectID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("alert_rule_store list_recent: %w", err)
 	}

@@ -87,10 +87,12 @@ func NewRouter(
 
 			r.Route("/budget", func(r chi.Router) {
 				budgetHandler.Routes(r)
+				r.Get("/alerts/recent", budgetHandler.ListRecent)
 			})
 
 			r.Route("/alerts", func(r chi.Router) {
 				alertHandler.Routes(r)
+				r.Get("/events/recent", alertHandler.ListRecent)
 			})
 
 			r.Route("/analytics", func(r chi.Router) {
@@ -122,10 +124,6 @@ func NewRouter(
 				topologyHandler.Routes(r)
 			})
 		})
-
-		// Cross-project recent alerts — unauthenticated for now
-		r.Get("/budget/alerts/recent", budgetHandler.ListRecent)
-		r.Get("/alerts/events/recent", alertHandler.ListRecent)
 
 		// WebSocket — real-time budget alerts (validates token inline)
 		r.Get("/ws/alerts", hub.ServeWS)
