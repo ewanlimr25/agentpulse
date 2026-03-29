@@ -59,11 +59,15 @@ var sampleConversations = [][2]string{
 	},
 	{
 		"The data pipeline job has not completed after the expected window. Diagnose the issue.",
-		"timeout after 30s waiting for response from the data-enrichment service. The service at enrichment-svc:8080/enrich appears to be unresponsive. Last successful heartbeat was 4 minutes ago. Suggest restarting the pod and checking memory pressure on the node.",
+		"connection timeout after 30s waiting for response from the data-enrichment service. The service at enrichment-svc:8080/enrich appears to be unresponsive. Last successful heartbeat was 4 minutes ago. Suggest restarting the pod and checking memory pressure on the node.",
 	},
 	{
 		"Run inference on the provided dataset using the production model.",
 		"quota exceeded for model gpt-4o — you have consumed 100% of your monthly token budget. Current usage: 10,000,000 / 10,000,000 tokens. Please upgrade your plan or wait until the quota resets on the 1st of next month.",
+	},
+	{
+		"Please summarize the following document: 'Q3 Infrastructure Reliability Report — Service uptime was 99.2% across all regions. Two P1 incidents occurred: a database failover on Aug 14 (42-minute outage) and a CDN misconfiguration on Sep 3 (18-minute partial outage). Root causes have been addressed.'",
+		"Summary: Q3 infrastructure achieved 99.2% uptime with two P1 incidents — a 42-minute database failover on Aug 14 and an 18-minute CDN misconfiguration on Sep 3. Both root causes have been resolved. Overall reliability is within SLA targets.",
 	},
 }
 
@@ -124,6 +128,16 @@ func withTool(name string) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		attribute.String("agentpulse.span.kind", "tool.call"),
 		attribute.String("agentpulse.tool.name", name),
+	}
+}
+
+// withToolIO is like withTool but attaches tool.input and tool.output for search indexing.
+func withToolIO(name, input, output string) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "tool.call"),
+		attribute.String("agentpulse.tool.name", name),
+		attribute.String("tool.input", input),
+		attribute.String("tool.output", output),
 	}
 }
 
@@ -199,7 +213,11 @@ func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID, 
 	)
 
 	span(tracer, kbCtx, "tool/search_knowledge_base",
-		combine(baseAttrs(projectID, runID, "kb-agent"), user, withTool("search_knowledge_base"))...,
+		combine(baseAttrs(projectID, runID, "kb-agent"), user,
+			withToolIO("search_knowledge_base",
+				`{"query": "billing dispute refund policy", "index": "support-kb-v2"}`,
+				`{"status": "error", "error": "insufficient permissions to read knowledge base index 'support-kb-v2' — service account lacks read role"}`,
+			))...,
 	)(jitterD(80*time.Millisecond))
 
 	in, out := randTokens(600, 1800, 200, 600)
@@ -473,7 +491,11 @@ func scenarioPRReview(ctx context.Context, tracer trace.Tracer, projectID, userI
 		)...),
 	)
 	span(tracer, secCtx, "tool/run_semgrep",
-		combine(baseAttrs(projectID, runID, "security-scanner"), user, withTool("run_semgrep"))...,
+		combine(baseAttrs(projectID, runID, "security-scanner"), user,
+			withToolIO("run_semgrep",
+				`{"target": "src/", "rules": ["p/owasp-top-ten", "p/sql-injection"], "severity": ["ERROR", "WARNING"]}`,
+				`{"findings": [{"rule": "sql-injection", "file": "src/db/queries.go", "line": 45, "message": "rate limit exceeded calls should be retried — but raw user input is concatenated into SQL string on this line"}, {"rule": "auth-bypass", "file": "src/api/admin.go", "line": 78, "message": "endpoint accessible without authentication check"}]}`,
+			))...,
 	)(jitterD(300*time.Millisecond))
 	in, out := randTokens(1500, 3000, 200, 500)
 	spanLLM(tracer, secCtx, "security-scanner/triage-findings",
@@ -583,7 +605,11 @@ func scenarioPipelineHealth(ctx context.Context, tracer trace.Tracer, projectID,
 	)(jitterD(120*time.Millisecond))
 
 	span(tracer, rootCtx, "tool/fetch_error_logs",
-		combine(baseAttrs(projectID, runID, "monitor-agent"), user, withTool("fetch_error_logs"))...,
+		combine(baseAttrs(projectID, runID, "monitor-agent"), user,
+			withToolIO("fetch_error_logs",
+				`{"service": "data-enrichment", "tail": 50, "level": "ERROR"}`,
+				`{"lines": ["[ERROR] connection timeout after 30s connecting to postgres-primary:5432", "[ERROR] connection timeout after 30s connecting to postgres-primary:5432", "[ERROR] max retries exceeded — circuit breaker open"]}`,
+			))...,
 	)(jitterD(60*time.Millisecond))
 
 	_, diagSpan := tracer.Start(rootCtx, "monitor-agent/diagnose",

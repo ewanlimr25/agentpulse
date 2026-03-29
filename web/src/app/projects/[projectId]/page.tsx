@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import Link from "next/link";
@@ -109,6 +109,27 @@ export default function ProjectPage({
   // When the query changes, reset accumulated results.
   const isSearchActive = searchQuery.length >= 3;
 
+  // Sync allSearchResults from each new page of searchData.
+  // - offset=0: new search, replace accumulated results with fresh page.
+  // - offset>0: load-more, append new unique results to accumulator.
+  // Using searchData as the sole dependency so this fires when a new page
+  // arrives, not when searchOffset changes (keepPreviousData holds the old
+  // reference during the in-flight fetch).
+  useEffect(() => {
+    if (!searchData) return;
+    if (searchOffset === 0) {
+      setAllSearchResults(searchData.results ?? []);
+    } else {
+      setAllSearchResults((prev) => {
+        const ids = new Set(prev.map((r) => r.SpanID + r.MatchedField));
+        const next = (searchData.results ?? []).filter((r) => !ids.has(r.SpanID + r.MatchedField));
+        if (next.length === 0) return prev;
+        return [...prev, ...next];
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchData]);
+
   // Reads from the same cache key that RunList populates via useInfiniteQuery
   const runs = useAllFetchedRuns(projectId);
 
@@ -194,7 +215,7 @@ export default function ProjectPage({
 
         {isSearchActive ? (
           <SearchResults
-            results={searchData?.results ?? allSearchResults}
+            results={allSearchResults}
             total={searchData?.total ?? 0}
             query={searchQuery}
             projectId={projectId}
@@ -206,12 +227,6 @@ export default function ProjectPage({
             }
             onLoadMore={() => {
               if (searchData) {
-                // Merge current page into accumulated results before advancing.
-                setAllSearchResults((prev) => {
-                  const ids = new Set(prev.map((r) => r.SpanID + r.MatchedField));
-                  const next = searchData.results.filter((r) => !ids.has(r.SpanID + r.MatchedField));
-                  return [...prev, ...next];
-                });
                 setSearchOffset(searchData.offset + searchData.limit);
               }
             }}

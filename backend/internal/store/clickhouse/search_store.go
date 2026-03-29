@@ -24,39 +24,62 @@ func NewSearchStore(conn driver.Conn) *SearchStore {
 
 // escapeLike escapes LIKE metacharacters in the search term so user input is
 // treated as a literal substring, not a pattern.
+// ClickHouse's LIKE supports bracket expressions ([abc]) in addition to the
+// standard SQL metacharacters (%, _, \), so we escape all five.
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)
 	s = strings.ReplaceAll(s, `_`, `\_`)
+	s = strings.ReplaceAll(s, `[`, `\[`)
+	s = strings.ReplaceAll(s, `]`, `\]`)
 	return s
 }
 
-// extractSnippet returns a ~200-char window of text centred on the first
+// extractSnippet returns a ~200-rune window of text centred on the first
 // occurrence of query (case-insensitive). If query is not found the first
-// 200 chars are returned instead.
+// 200 runes are returned instead.
+// All arithmetic is in rune offsets to avoid splitting multibyte UTF-8 characters.
 func extractSnippet(text, query string) string {
-	lowerText := strings.ToLower(text)
-	lowerQuery := strings.ToLower(query)
-	pos := strings.Index(lowerText, lowerQuery)
+	runes := []rune(text)
+	lowerRunes := []rune(strings.ToLower(text))
+	lowerQuery := []rune(strings.ToLower(query))
+
+	// Find the first rune-offset occurrence of lowerQuery in lowerRunes.
+	pos := -1
+	for i := 0; i <= len(lowerRunes)-len(lowerQuery); i++ {
+		match := true
+		for j, r := range lowerQuery {
+			if lowerRunes[i+j] != r {
+				match = false
+				break
+			}
+		}
+		if match {
+			pos = i
+			break
+		}
+	}
+
 	if pos < 0 {
-		if len(text) > 200 {
-			return text[:200] + "..."
+		if len(runes) > 200 {
+			return string(runes[:200]) + "..."
 		}
 		return text
 	}
+
 	start := pos - 100
 	if start < 0 {
 		start = 0
 	}
-	end := pos + len(query) + 100
-	if end > len(text) {
-		end = len(text)
+	end := pos + len(lowerQuery) + 100
+	if end > len(runes) {
+		end = len(runes)
 	}
-	snippet := text[start:end]
+	snippet := string(runes[start:end])
 	if start > 0 {
 		snippet = "..." + snippet
 	}
-	if end < len(text) {
+	if end < len(runes) {
 		snippet = snippet + "..."
 	}
 	return snippet

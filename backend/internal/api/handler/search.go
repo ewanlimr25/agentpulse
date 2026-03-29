@@ -66,7 +66,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sk := r.URL.Query().Get("span_kind"); sk != "" {
-		params.SpanKind = domain.AgentSpanKind(sk)
+		switch domain.AgentSpanKind(sk) {
+		case domain.SpanKindLLMCall, domain.SpanKindToolCall, domain.SpanKindAgentHandoff,
+			domain.SpanKindMemoryRead, domain.SpanKindMemoryWrite, domain.SpanKindUnknown:
+			params.SpanKind = domain.AgentSpanKind(sk)
+		default:
+			httputil.Error(w, http.StatusBadRequest, "invalid span_kind; valid values: llm.call, tool.call, agent.handoff, memory.read, memory.write, unknown")
+			return
+		}
 	}
 
 	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
