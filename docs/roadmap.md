@@ -9,6 +9,8 @@ Items #1–#12 are complete. This document covers everything remaining, consolid
 - Semantic search security hardened: `escapeLike` bracket fix, rune-aware `extractSnippet`, `span_kind` enum validation, load-more accumulation bug fixed
 - Streaming Span Support (#12) audited and confirmed fully complete
 - **IDOR on run-scoped routes** fixed: `RunAuth` middleware, budget/alert rule ownership checks, webhook SSRF validation, `ListRecent` limit cap
+- **A1** `ListRecent` data leak fixed: routes moved into authenticated project group, SQL scoped to `project_id`
+- **A2** WebSocket project-scope gap fixed: `ServeWS` verifies Bearer token ownership before upgrading; shared `authutil` package extracted
 
 ---
 
@@ -162,8 +164,8 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 | # | Item | Effort | Priority |
 |---|------|--------|----------|
 | 0 | IDOR on run routes + budget/alert ownership + webhook SSRF | ✅ Done | — |
-| A1 | `ListRecent` unauthenticated (cross-project data leak) | ~2h | 🔴 Tier 1 |
-| A2 | WebSocket auth project-scope gap | ~2h | 🔴 Tier 1 |
+| A1 | `ListRecent` unauthenticated (cross-project data leak) | ✅ Done | — |
+| A2 | WebSocket auth project-scope gap | ✅ Done | — |
 | A3 | Rate limiter memory leak | ~1h | 🔴 Tier 1 |
 | A4 | CORS wildcard (defer until JWT auth) | ~30m | 🟠 Tier 2 |
 | A5 | Collector rate limiting (`POST /v1/traces`) | ~1d | 🔴 Tier 1 |
