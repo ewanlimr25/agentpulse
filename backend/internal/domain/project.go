@@ -6,7 +6,7 @@ import "time"
 type Project struct {
 	ID         string
 	Name       string
-	APIKeyHash string // SHA-256 hex of the raw API key; never stored in plaintext
+	APIKeyHash string `json:"-"` // SHA-256 hex of the raw API key; never stored in plaintext
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

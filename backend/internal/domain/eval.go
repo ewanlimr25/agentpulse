@@ -37,6 +37,24 @@ type EvalConfig struct {
 	UpdatedAt      time.Time
 }
 
+// EvalTypeBaseline holds per-eval-type baseline stats across the last N runs.
+type EvalTypeBaseline struct {
+	EvalName  string  `json:"eval_name"`
+	AvgScore  float32 `json:"avg_score"`
+	SpanCount int     `json:"span_count"`
+	RunCount  int     `json:"run_count"` // how many of the N runs contributed scores for this type
+}
+
+// EvalBaseline is the response for GET /projects/{id}/evals/baseline.
+// OverallScore is the unweighted average of per-type averages — informational only;
+// CI gates should use per-type thresholds via the CLI --eval-type flag.
+type EvalBaseline struct {
+	ProjectID      string             `json:"project_id"`
+	RunsConsidered int                `json:"runs_considered"`
+	Types          []EvalTypeBaseline `json:"types"`
+	OverallScore   float32            `json:"overall_score"`
+}
+
 // EvalJob is a pending unit of work in the eval queue.
 type EvalJob struct {
 	ID        string

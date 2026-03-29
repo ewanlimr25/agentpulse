@@ -71,12 +71,14 @@ func NewRouter(
 		// belongs to that specific project.
 		r.Route("/projects/{projectID}", func(r chi.Router) {
 			r.Use(bearerAuth)
+			r.Use(middleware.RateLimit)
 
 			r.Get("/", projectHandler.Get)
 
 			r.Get("/runs", runHandler.List)
 			r.Get("/runs/compare", runHandler.Compare)
 			r.Get("/evals/summary", evalHandler.SummaryByProject)
+			r.Get("/evals/baseline", evalHandler.BaselineByProject)
 
 			r.Route("/evals", func(r chi.Router) {
 				evalConfigHandler.Routes(r)

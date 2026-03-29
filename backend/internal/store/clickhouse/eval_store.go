@@ -9,6 +9,28 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
 )
 
+// baselineRunIDsQuery fetches the last N run_ids for a project from run_metrics,
+// ordered by run start time descending. Using run_metrics (not span_evals) keeps
+// this query index-aligned on (project_id) and avoids a full span_evals scan.
+const baselineRunIDsQuery = `
+SELECT run_id
+FROM run_metrics
+WHERE project_id = ?
+ORDER BY min_start DESC
+LIMIT ?
+`
+
+// baselineEvalsQuery aggregates per-eval-type scores for a specific set of run IDs.
+// FINAL ensures dedup on the ReplacingMergeTree. project_id filter leverages the
+// sort-key prefix for efficient pruning before the IN clause scan.
+const baselineEvalsQuery = `
+SELECT eval_name, avg(score) AS avg_score, count() AS span_count, countDistinct(run_id) AS run_count
+FROM span_evals FINAL
+WHERE project_id = ? AND run_id IN (?)
+GROUP BY eval_name
+ORDER BY eval_name
+`
+
 type EvalStore struct {
 	conn driver.Conn
 }
@@ -64,6 +86,72 @@ WHERE project_id = ?
 GROUP BY run_id, eval_name
 ORDER BY run_id, eval_name
 `
+
+// BaselineByProject returns per-eval-type avg scores across the last N runs.
+// It uses a two-query strategy: first fetch run IDs from run_metrics (index-aligned),
+// then aggregate eval scores for only those runs.
+func (s *EvalStore) BaselineByProject(ctx context.Context, projectID string, lastNRuns int) (*domain.EvalBaseline, error) {
+	// Step 1: Get last N run IDs from run_metrics.
+	runRows, err := s.conn.Query(ctx, baselineRunIDsQuery, projectID, lastNRuns)
+	if err != nil {
+		return nil, fmt.Errorf("eval_store baseline run_ids: %w", err)
+	}
+	var runIDs []string
+	for runRows.Next() {
+		var rid string
+		if err := runRows.Scan(&rid); err != nil {
+			runRows.Close()
+			return nil, fmt.Errorf("eval_store baseline run_ids scan: %w", err)
+		}
+		runIDs = append(runIDs, rid)
+	}
+	runRows.Close()
+	if err := runRows.Err(); err != nil {
+		return nil, fmt.Errorf("eval_store baseline run_ids rows: %w", err)
+	}
+
+	baseline := &domain.EvalBaseline{
+		ProjectID:      projectID,
+		RunsConsidered: len(runIDs),
+	}
+
+	// No runs → return empty baseline (not an error).
+	if len(runIDs) == 0 {
+		return baseline, nil
+	}
+
+	// Step 2: Aggregate eval scores for those run IDs.
+	evalRows, err := s.conn.Query(ctx, baselineEvalsQuery, projectID, runIDs)
+	if err != nil {
+		return nil, fmt.Errorf("eval_store baseline evals: %w", err)
+	}
+	defer evalRows.Close()
+
+	var totalScore float32
+	for evalRows.Next() {
+		t := domain.EvalTypeBaseline{}
+		var avgScore float64
+		var spanCount, runCount uint64
+		if err := evalRows.Scan(&t.EvalName, &avgScore, &spanCount, &runCount); err != nil {
+			return nil, fmt.Errorf("eval_store baseline evals scan: %w", err)
+		}
+		t.AvgScore = float32(avgScore)
+		t.SpanCount = int(spanCount)
+		t.RunCount = int(runCount)
+		baseline.Types = append(baseline.Types, t)
+		totalScore += t.AvgScore
+	}
+	if err := evalRows.Err(); err != nil {
+		return nil, fmt.Errorf("eval_store baseline evals rows: %w", err)
+	}
+
+	// Unweighted average across types — for informational display only.
+	if len(baseline.Types) > 0 {
+		baseline.OverallScore = totalScore / float32(len(baseline.Types))
+	}
+
+	return baseline, nil
+}
 
 func (s *EvalStore) SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error) {
 	rows, err := s.conn.Query(ctx, summaryByProjectQuery, projectID)

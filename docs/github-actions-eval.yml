@@ -1,0 +1,122 @@
+name: Eval Quality Gate
+
+# Run on every pull request and on pushes to main.
+# The gate compares the project's recent eval scores against a threshold
+# and fails the build if quality has regressed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  eval-gate:
+    name: AgentPulse eval quality gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go is required to install the CLI. Pin to the same version used in
+      # the backend to avoid toolchain mismatches.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      # Install the agentpulse-cli binary. This pulls the module directly from
+      # the repository — no separate release artifact required.
+      - name: Install agentpulse-cli
+        run: go install github.com/agentpulse/agentpulse/backend/cmd/agentpulse-cli@latest
+
+      # Gate on the overall eval score across all types.
+      #
+      # AGENTPULSE_API_KEY must be added to your repository secrets:
+      #   Settings → Secrets and variables → Actions → New repository secret
+      #
+      # AGENTPULSE_PROJECT_ID should be a repository variable (not a secret):
+      #   Settings → Secrets and variables → Actions → Variables → New repository variable
+      #
+      # --threshold 0.7       Fail if average score drops below 0.70.
+      # --runs 10             Average the last 10 runs.
+      # --min-runs 3          Skip (exit 2) if fewer than 3 runs have eval data.
+      #                       Prevents false failures on new projects or after a
+      #                       db-reset during development.
+      - name: Check eval quality gate
+        env:
+          AGENTPULSE_API_KEY: ${{ secrets.AGENTPULSE_API_KEY }}
+        run: |
+          agentpulse-cli eval check \
+            --project ${{ vars.AGENTPULSE_PROJECT_ID }} \
+            --threshold 0.7 \
+            --runs 10 \
+            --min-runs 3
+
+  # Optional: add a second job to gate on a specific high-risk eval type.
+  # This example gates on hallucination separately because a hallucination
+  # regression is a different severity from a general quality drop.
+  eval-gate-hallucination:
+    name: AgentPulse hallucination gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install agentpulse-cli
+        run: go install github.com/agentpulse/agentpulse/backend/cmd/agentpulse-cli@latest
+
+      # Gate only on the hallucination eval type with a stricter threshold.
+      #
+      # --eval-type hallucination   Check hallucination score only.
+      # --threshold 0.6             Lower threshold than overall — hallucination
+      #                             scores tend to be harder to keep high.
+      # --fail-open                 Do not block the build if the API is down.
+      #                             Remove this flag to make the gate hard.
+      - name: Check hallucination score
+        env:
+          AGENTPULSE_API_KEY: ${{ secrets.AGENTPULSE_API_KEY }}
+        run: |
+          agentpulse-cli eval check \
+            --project ${{ vars.AGENTPULSE_PROJECT_ID }} \
+            --eval-type hallucination \
+            --threshold 0.6 \
+            --runs 10 \
+            --min-runs 3 \
+            --fail-open
+
+  # Optional: emit structured JSON for downstream processing or PR annotations.
+  eval-gate-json:
+    name: AgentPulse eval gate (JSON output)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install agentpulse-cli
+        run: go install github.com/agentpulse/agentpulse/backend/cmd/agentpulse-cli@latest
+
+      # --json emits a structured result to stdout regardless of pass/fail.
+      # Pipe it to jq or save it as an artifact for downstream steps.
+      - name: Run eval gate and capture JSON result
+        env:
+          AGENTPULSE_API_KEY: ${{ secrets.AGENTPULSE_API_KEY }}
+        run: |
+          agentpulse-cli eval check \
+            --project ${{ vars.AGENTPULSE_PROJECT_ID }} \
+            --threshold 0.7 \
+            --runs 10 \
+            --min-runs 3 \
+            --json | tee eval-result.json
+
+      - name: Upload eval result as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-result
+          path: eval-result.json

@@ -3,6 +3,7 @@
         web-install web-dev web-build \
         test test-collector test-backend test-web test-sdk-ts \
         sdk-ts-install sdk-ts-codegen sdk-ts-build \
+        cli-build cli-install \
         seed lint
 
 SHELL := /bin/bash
@@ -90,6 +91,12 @@ backend-run: ## Run the backend API (requires dev-up + migrate-up)
 
 test-backend: ## Run backend unit + integration tests
 	cd backend && go test ./... -race -count=1
+
+cli-build: ## Build the agentpulse-cli binary to tools/agentpulse-cli
+	cd backend && go build -o ../tools/agentpulse-cli ./cmd/agentpulse-cli
+
+cli-install: ## Install the agentpulse-cli binary to /usr/local/bin
+	cd backend && go install ./cmd/agentpulse-cli
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 

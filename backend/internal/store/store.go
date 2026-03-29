@@ -86,6 +86,8 @@ type EvalStore interface {
 	ListByRun(ctx context.Context, runID string) ([]*domain.SpanEval, error)
 	// SummaryByProject returns avg score per run for a project.
 	SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error)
+	// BaselineByProject returns per-eval-type avg scores across the last N runs.
+	BaselineByProject(ctx context.Context, projectID string, lastNRuns int) (*domain.EvalBaseline, error)
 }
 
 // AlertRuleStore manages signal-based alert rules and events in Postgres.
