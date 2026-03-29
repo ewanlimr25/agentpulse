@@ -8,32 +8,37 @@ Items #1–#12 are complete. This document covers everything remaining, consolid
 - **Quality Gates** (item C below) shipped: `agentpulse eval check` CLI, `GET /evals/baseline` endpoint, rate limiting on project-scoped routes, GitHub Actions docs
 - Semantic search security hardened: `escapeLike` bracket fix, rune-aware `extractSnippet`, `span_kind` enum validation, load-more accumulation bug fixed
 - Streaming Span Support (#12) audited and confirmed fully complete
-
----
-
-## Pre-Roadmap: Fix Now (security bug)
-
-### IDOR on `/runs/{runID}` routes
-
-The run-scoped API routes (`GET /runs/{runID}`, `/spans`, `/evals`, `/loops`, `/topology`) are currently unauthenticated. Anyone who discovers a run ID can read proprietary prompts and completions — a classic Insecure Direct Object Reference vulnerability.
-
-**Fix:** resolve `project_id` from the run record in a middleware, verify the Bearer token matches that project, 403 otherwise. Same pattern already used by all project-scoped routes.
-
-**Effort:** ~2 hours. Should happen before shipping to any external user.
+- **IDOR on run-scoped routes** fixed: `RunAuth` middleware, budget/alert rule ownership checks, webhook SSRF validation, `ListRecent` limit cap
 
 ---
 
 ## Tier 1 — Production Safety (blockers)
 
-### A. API Rate Limiting
+### A. Security Hardening (remaining surfaces)
 
-**Why first:** a stuck agent in an infinite loop will hammer the collector and API right now. Project-scoped backend routes have a 60 req/min cap added in the quality gates pass, but the collector's `POST /v1/traces` and run-scoped routes are still unprotected.
+The IDOR fix shipped the highest-severity issues. Four lower-severity items remain, ordered by risk:
 
-**Remaining surfaces:**
-- `POST /v1/traces` in the collector — token-bucket per `agentpulse.project_id` attribute; drop/429 excess batches
-- Run-scoped API routes — same per-project sliding window already used on project routes
+**A1. `ListRecent` endpoints unauthenticated** _(~2h)_
+`GET /api/v1/budget/alerts/recent` and `GET /api/v1/alerts/events/recent` return cross-project alert data with no authentication. Any unauthenticated caller can enumerate alert names, thresholds, and webhook URLs across all projects.
+- Fix: apply `BearerAuth` (project-scoped) or require a valid token and filter to that project only.
 
-**Effort:** ~1 day.
+**A2. WebSocket auth project-scope gap** _(~2h)_
+`GET /ws/alerts` validates a Bearer token inline but does not verify the token belongs to the project being streamed. A valid key for project-A can subscribe to project-B's real-time budget alerts.
+- Fix: extract `project_id` query param, verify token ownership before upgrading the connection.
+
+**A3. Rate limiter memory leak** _(~1h)_
+The in-memory token-bucket map (`ratelimit.go`) grows unboundedly — one entry per project ID, never evicted. Under churn (many short-lived projects or fuzz input), this is an OOM vector.
+- Fix: add a background ticker that evicts buckets idle for >10 minutes, or use a size-bounded LRU.
+
+**A4. CORS wildcard** _(~30m)_
+`Access-Control-Allow-Origin: *` is set globally. Fine for an open API, but allows any website to make credentialed requests. Once JWT auth lands (item G), this must be tightened to an explicit origin allowlist.
+- Fix: read allowed origins from config; default to `*` only in dev mode.
+
+**A5. API Rate Limiting — collector** _(~1d)_
+`POST /v1/traces` in the OTel collector is still unprotected. A stuck agent in an infinite loop can flood ingestion with no back-pressure.
+- Fix: token-bucket per `agentpulse.project_id` attribute in the collector pipeline; drop/429 excess batches.
+
+**Priority order:** A1 and A2 before any external users see the product. A3 before sustained load. A4 deferred until JWT auth. A5 before cloud launch.
 
 ---
 
@@ -156,8 +161,12 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 
 | # | Item | Effort | Priority |
 |---|------|--------|----------|
-| 0 | Fix IDOR on run routes | ~2h | 🔴 Fix now |
-| A | API Rate Limiting (collector + run routes) | 1d | 🔴 Tier 1 |
+| 0 | IDOR on run routes + budget/alert ownership + webhook SSRF | ✅ Done | — |
+| A1 | `ListRecent` unauthenticated (cross-project data leak) | ~2h | 🔴 Tier 1 |
+| A2 | WebSocket auth project-scope gap | ~2h | 🔴 Tier 1 |
+| A3 | Rate limiter memory leak | ~1h | 🔴 Tier 1 |
+| A4 | CORS wildcard (defer until JWT auth) | ~30m | 🟠 Tier 2 |
+| A5 | Collector rate limiting (`POST /v1/traces`) | ~1d | 🔴 Tier 1 |
 | B | PII / Secret Redaction | 3d | 🔴 Tier 1 |
 | C | Quality Gates | ✅ Done | — |
 | D | Human-in-the-Loop Evals | 2d | 🟠 Tier 2 |
