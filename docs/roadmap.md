@@ -11,6 +11,7 @@ Items #1–#12 are complete. This document covers everything remaining, consolid
 - **IDOR on run-scoped routes** fixed: `RunAuth` middleware, budget/alert rule ownership checks, webhook SSRF validation, `ListRecent` limit cap
 - **A1** `ListRecent` data leak fixed: routes moved into authenticated project group, SQL scoped to `project_id`
 - **A2** WebSocket project-scope gap fixed: `ServeWS` verifies Bearer token ownership before upgrading; shared `authutil` package extracted
+- **A3** Rate limiter memory leak fixed: struct-based `RateLimiter` with background eviction ticker; run-scoped routes now rate-limited via `ProjectFromContext` fallback
 
 ---
 
@@ -166,7 +167,7 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 | 0 | IDOR on run routes + budget/alert ownership + webhook SSRF | ✅ Done | — |
 | A1 | `ListRecent` unauthenticated (cross-project data leak) | ✅ Done | — |
 | A2 | WebSocket auth project-scope gap | ✅ Done | — |
-| A3 | Rate limiter memory leak | ~1h | 🔴 Tier 1 |
+| A3 | Rate limiter memory leak | ✅ Done | — |
 | A4 | CORS wildcard (defer until JWT auth) | ~30m | 🟠 Tier 2 |
 | A5 | Collector rate limiting (`POST /v1/traces`) | ~1d | 🔴 Tier 1 |
 | B | PII / Secret Redaction | 3d | 🔴 Tier 1 |
