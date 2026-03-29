@@ -1,8 +1,13 @@
 # AgentPulse Roadmap
 
-Last updated: 2026-03-26
+Last updated: 2026-03-29
 
 Items #1–#12 are complete. This document covers everything remaining, consolidated from the original tier 2/3 items and the enterprise/security feedback round.
+
+**Progress since last update (2026-03-29):**
+- Quality Gates CI gate (automated half of item C) shipped: `agentpulse eval check` CLI, `GET /evals/baseline` endpoint, rate limiting on project-scoped routes, GitHub Actions docs
+- Semantic search security hardened: `escapeLike` bracket fix, rune-aware `extractSnippet` (UTF-8 panic), `span_kind` enum validation, load-more accumulation bug fixed
+- Streaming Span Support (#12) audited and confirmed fully complete
 
 ---
 
@@ -50,20 +55,21 @@ The run-scoped API routes (`GET /runs/{runID}`, `/spans`, `/evals`, `/loops`, `/
 
 ### C. Quality Gates + Human-in-the-Loop Evals
 
-These are the same system from two angles — automated CI gates need human feedback as ground truth. Build together.
+These are the same system from two angles — automated CI gates need human feedback as ground truth.
 
-**Human-in-the-Loop:**
+**Quality Gates — ✅ DONE (2026-03-29)**
+- `GET /projects/{id}/evals/baseline` endpoint — avg score over last N runs, per eval type
+- `agentpulse eval check` CLI — exit 0=pass, 1=fail, 2=error; `--threshold`, `--eval-type`, `--runs`, `--min-runs`, `--fail-open`, `--json` flags
+- GitHub Actions example in `docs/github-actions-eval.yml`
+- Rate limiting (60 req/min per project) on all project-scoped routes
+
+**Human-in-the-Loop — still needed:**
 - `POST /projects/{id}/runs/{runID}/spans/{spanID}/feedback` — `{rating: "good"|"bad", corrected_output?: string}`
 - New `span_feedback` Postgres table
 - Frontend: thumbs up/down on span detail drawer, correction text box
-- Feedback counts and weighted scores surfaced in eval summary
+- Feedback counts and weighted scores surfaced in eval summary; quality gate baseline incorporates ratings
 
-**Quality Gates:**
-- `GET /projects/{id}/evals/baseline` endpoint — avg score over last N runs, incorporating human feedback ratings
-- `agentpulse eval check --project X --threshold 0.65` CLI command with CI-friendly exit codes (0 = pass, 1 = fail)
-- GitHub Actions example in docs — fail PR if staging eval score drops >10% vs main baseline
-
-**Effort:** ~4 days.
+**Effort:** ~2 days (HitL portion only).
 
 ---
 
