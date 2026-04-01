@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import type { Span, SpanEval } from "@/lib/types";
+import type { Span, SpanEval, SpanEvalGroup, SpanFeedback } from "@/lib/types";
 import { SpanDetailContent } from "./SpanDetailContent";
 
 interface Props {
   span: Span | undefined;
   evals?: SpanEval[];
+  evalGroups?: SpanEvalGroup[];
   runStartTime: string;
   onClose: () => void;
+  projectId: string;
+  runId: string;
+  feedback?: SpanFeedback | null;
+  onFeedbackChange?: (feedback: SpanFeedback | null) => void;
 }
 
-export function SpanDetailDrawer({ span, evals, runStartTime, onClose }: Props) {
+export function SpanDetailDrawer({ span, evals, evalGroups, runStartTime, onClose, projectId, runId, feedback, onFeedbackChange }: Props) {
   // Close on ESC
   useEffect(() => {
     if (!span) return;
@@ -53,7 +58,7 @@ export function SpanDetailDrawer({ span, evals, runStartTime, onClose }: Props) 
           </button>
         </div>
 
-        <SpanDetailContent span={span} evals={evals} runStartTime={runStartTime} />
+        <SpanDetailContent span={span} evals={evals} evalGroups={evalGroups} runStartTime={runStartTime} projectId={projectId} runId={runId} feedback={feedback} onFeedbackChange={onFeedbackChange} />
       </div>
     </>
   );

@@ -7,32 +7,59 @@ import { projectsApi } from "@/lib/api";
 import { saveApiKey } from "@/lib/api-keys";
 import { Navbar } from "@/components/Navbar";
 
+interface CreatedKeys {
+  apiKey: string;
+  adminKey: string;
+}
+
+function CopyKeyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div>
+      <label className="block text-xs text-[var(--text-muted)] mb-1">{label}</label>
+      <div className="flex gap-2 items-stretch">
+        <div className="flex-1 bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2.5 overflow-hidden">
+          <p className="text-xs font-mono text-green-400 break-all">{value}</p>
+        </div>
+        <button
+          onClick={handleCopy}
+          className="shrink-0 border border-[var(--border)] text-[var(--text-muted)] text-xs px-3 rounded-lg hover:border-indigo-500 hover:text-[var(--text)] transition-colors"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
-  const [apiKey, setApiKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [createdKeys, setCreatedKeys] = useState<CreatedKeys | null>(null);
   const qc = useQueryClient();
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: (n: string) => projectsApi.create(n),
     onSuccess: (data) => {
       saveApiKey(data.project.ID, data.api_key);
+      if (data.admin_key) {
+        localStorage.setItem(`adminKey_${data.project.ID}`, data.admin_key);
+      }
       qc.invalidateQueries({ queryKey: ["projects"] });
-      setApiKey(data.api_key);
+      setCreatedKeys({ apiKey: data.api_key, adminKey: data.admin_key ?? "" });
     },
   });
-
-  function handleCopy() {
-    if (!apiKey) return;
-    navigator.clipboard.writeText(apiKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="w-full max-w-md bg-[var(--surface)] border border-[var(--border)] rounded-xl px-8 py-8">
-        {!apiKey ? (
+        {!createdKeys ? (
           <>
             <h2 className="text-lg font-semibold text-[var(--text)] mb-6">Create Project</h2>
             <form
@@ -79,18 +106,20 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
           <>
             <h2 className="text-lg font-semibold text-[var(--text)] mb-2">Project Created</h2>
             <p className="text-sm text-[var(--text-muted)] mb-4">
-              Copy your API key now — it won&apos;t be shown again.
+              Copy both keys now — they won&apos;t be shown again.
             </p>
-            <div className="bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-3 mb-2">
-              <p className="text-xs font-mono text-green-400 break-all">{apiKey}</p>
+            <div className="flex flex-col gap-3 mb-2">
+              <CopyKeyField label="API Key (for SDK)" value={createdKeys.apiKey} />
+              {createdKeys.adminKey && (
+                <>
+                  <CopyKeyField label="Admin Key (for settings)" value={createdKeys.adminKey} />
+                  <p className="text-xs text-amber-400/80">
+                    Store the Admin Key securely — it is used to modify project settings and will not be shown again.
+                  </p>
+                </>
+              )}
             </div>
             <div className="flex gap-3 mt-4">
-              <button
-                onClick={handleCopy}
-                className="flex-1 border border-[var(--border)] text-[var(--text-muted)] text-sm py-2 rounded-lg hover:border-indigo-500 transition-colors"
-              >
-                {copied ? "Copied!" : "Copy Key"}
-              </button>
               <button
                 onClick={onClose}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2 rounded-lg transition-colors"

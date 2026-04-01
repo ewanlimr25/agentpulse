@@ -13,14 +13,16 @@ import (
 )
 
 const (
-	workerInterval = 5 * time.Second
-	registryTTL    = 60 * time.Second
+	workerInterval  = 5 * time.Second
+	registryTTL     = 60 * time.Second
+	judgeMaxParallel = 9
 )
 
 // Worker claims pending eval jobs and scores them via the LLM judge.
 // It is eval-type-agnostic: it delegates prompt building to the Registry.
 // The registry is reloaded from Postgres every registryTTL so that custom
 // evals created via the API are picked up without a restart.
+// Each job targets a single (eval_name, judge_model) pair; no fan-out occurs here.
 type Worker struct {
 	chConn         driver.Conn
 	jobStore       store.EvalJobStore
@@ -29,17 +31,20 @@ type Worker struct {
 	registry       evaltypes.Registry
 	promptVersions map[string]int // evalName → prompt_version (custom evals only)
 	registryAt     time.Time
-	apiKey         string
+	providerKeys   ProviderKeys
+	// sem caps the number of concurrent outbound judge API calls across all jobs.
+	sem chan struct{}
 }
 
-func NewWorker(chConn driver.Conn, jobStore store.EvalJobStore, evalStore store.EvalStore, configStore store.EvalConfigStore, apiKey string) *Worker {
+func NewWorker(chConn driver.Conn, jobStore store.EvalJobStore, evalStore store.EvalStore, configStore store.EvalConfigStore, providerKeys ProviderKeys) *Worker {
 	return &Worker{
-		chConn:      chConn,
-		jobStore:    jobStore,
-		evalStore:   evalStore,
-		configStore: configStore,
-		registry:    NewRegistry(nil), // built-ins only until first refresh
-		apiKey:      apiKey,
+		chConn:       chConn,
+		jobStore:     jobStore,
+		evalStore:    evalStore,
+		configStore:  configStore,
+		registry:     NewRegistry(nil), // built-ins only until first refresh
+		providerKeys: providerKeys,
+		sem:          make(chan struct{}, judgeMaxParallel),
 	}
 }
 
@@ -77,7 +82,7 @@ func (w *Worker) process(ctx context.Context) {
 	}
 	for _, job := range jobs {
 		if err := w.score(ctx, job); err != nil {
-			slog.Error("eval worker: score job", "span_id", job.SpanID, "eval_name", job.EvalName, "error", err)
+			slog.Error("eval worker: score job", "span_id", job.SpanID, "eval_name", job.EvalName, "judge_model", job.JudgeModel, "error", err)
 			_ = w.jobStore.MarkFailed(ctx, job.ID, err.Error())
 		}
 	}
@@ -96,6 +101,12 @@ func buildPromptVersionMap(configs []*domain.EvalConfig) map[string]int {
 }
 
 func (w *Worker) score(ctx context.Context, job *domain.EvalJob) error {
+	// Validate that the judge model is supported before doing any DB work.
+	if _, ok := SupportedModels[job.JudgeModel]; !ok {
+		slog.Warn("eval worker: unsupported judge model, marking failed", "judge_model", job.JudgeModel, "span_id", job.SpanID)
+		return w.jobStore.MarkFailed(ctx, job.ID, fmt.Sprintf("unsupported judge model: %q", job.JudgeModel))
+	}
+
 	// Look up the eval type in the registry.
 	evalType, ok := w.registry[job.EvalName]
 	if !ok {
@@ -150,7 +161,10 @@ func (w *Worker) score(ctx context.Context, job *domain.EvalJob) error {
 
 	builtPrompt := evalType.BuildPrompt(spanCtx)
 
-	result, err := callJudge(ctx, w.apiKey, builtPrompt)
+	// Acquire global concurrency slot before making the outbound judge API call.
+	w.sem <- struct{}{}
+	result, err := callJudgeModel(ctx, w.providerKeys, job.JudgeModel, builtPrompt)
+	<-w.sem
 	if err != nil {
 		return fmt.Errorf("judge call: %w", err)
 	}
@@ -168,7 +182,7 @@ func (w *Worker) score(ctx context.Context, job *domain.EvalJob) error {
 		EvalName:    job.EvalName,
 		Score:       result.Score,
 		Reasoning:   result.Reasoning,
-		JudgeModel:  judgeModel,
+		JudgeModel:  job.JudgeModel,
 		EvalVersion: version,
 		CreatedAt:   time.Now().UTC(),
 	}
@@ -176,6 +190,6 @@ func (w *Worker) score(ctx context.Context, job *domain.EvalJob) error {
 		return fmt.Errorf("insert eval: %w", err)
 	}
 
-	slog.Info("eval worker: scored", "span_id", job.SpanID, "eval_name", job.EvalName, "score", result.Score)
+	slog.Info("eval worker: scored", "span_id", job.SpanID, "eval_name", job.EvalName, "judge_model", job.JudgeModel, "score", result.Score)
 	return w.jobStore.MarkDone(ctx, job.ID)
 }

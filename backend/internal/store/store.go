@@ -69,6 +69,9 @@ type ProjectStore interface {
 	// GetByAPIKeyHash looks up a project by the SHA-256 hex hash of its API key.
 	// Returns an error wrapping pgx.ErrNoRows if not found.
 	GetByAPIKeyHash(ctx context.Context, hash string) (*domain.Project, error)
+	// GetByAdminKeyHash looks up a project by the SHA-256 hex hash of its admin key.
+	// Returns an error wrapping pgx.ErrNoRows if not found.
+	GetByAdminKeyHash(ctx context.Context, hash string) (*domain.Project, error)
 }
 
 // BudgetStore manages budget rules and alerts in Postgres.
@@ -88,6 +91,9 @@ type EvalStore interface {
 	Insert(ctx context.Context, e *domain.SpanEval) error
 	// ListByRun returns all evals for all spans in a run.
 	ListByRun(ctx context.Context, runID string) ([]*domain.SpanEval, error)
+	// ListByRunGrouped returns evals for all spans in a run, grouped by (span_id, eval_name).
+	// Each group carries per-model scores, a consensus mean, and a disagreement flag.
+	ListByRunGrouped(ctx context.Context, runID string) ([]*domain.SpanEvalGroup, error)
 	// SummaryByProject returns avg score per run for a project.
 	SummaryByProject(ctx context.Context, projectID string) ([]*domain.RunEvalSummary, error)
 	// BaselineByProject returns per-eval-type avg scores across the last N runs.
@@ -134,10 +140,36 @@ type EvalConfigStore interface {
 	Delete(ctx context.Context, projectID, evalName string) error
 }
 
+// ProjectPIIConfigStore manages per-project PII redaction settings in Postgres.
+type ProjectPIIConfigStore interface {
+	// Get returns the PII config for a project.
+	// If no row exists, a default struct is returned (PIIRedactionEnabled: false, empty rules) — never an error.
+	Get(ctx context.Context, projectID string) (*domain.ProjectPIIConfig, error)
+	// Upsert creates or updates the PII config for a project.
+	Upsert(ctx context.Context, cfg *domain.ProjectPIIConfig) error
+}
+
 // SearchStore performs full-text search over spans stored in ClickHouse.
 type SearchStore interface {
 	Search(ctx context.Context, params *domain.SearchParams) ([]*domain.SearchResult, error)
 	SearchCount(ctx context.Context, params *domain.SearchParams) (int, error)
+}
+
+// SpanFeedbackStore manages human-in-the-loop ratings for individual spans in Postgres.
+// All methods require projectID to enforce project-scoped access at the store layer.
+type SpanFeedbackStore interface {
+	// Upsert creates or replaces feedback for a span (keyed on project_id, span_id).
+	Upsert(ctx context.Context, f *domain.SpanFeedback) error
+	// GetBySpan returns the current feedback for a span, or nil if none exists.
+	GetBySpan(ctx context.Context, projectID, spanID string) (*domain.SpanFeedback, error)
+	// ListByRun returns all feedback records for spans in a run.
+	ListByRun(ctx context.Context, projectID, runID string) ([]*domain.SpanFeedback, error)
+	// Delete removes feedback for a span scoped to the project.
+	Delete(ctx context.Context, projectID, spanID string) error
+	// CountByProject returns the total number of feedback records for a project.
+	CountByProject(ctx context.Context, projectID string) (int, error)
+	// ListAllByProject returns all feedback records for a project.
+	ListAllByProject(ctx context.Context, projectID string) ([]*domain.SpanFeedback, error)
 }
 
 // LoopStore manages detected agent loops in Postgres.

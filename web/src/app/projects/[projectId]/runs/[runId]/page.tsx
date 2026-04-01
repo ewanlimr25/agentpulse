@@ -10,7 +10,7 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 import { LoopBanner } from "@/components/loops/LoopBanner";
-import type { Span, SpanEval } from "@/lib/types";
+import type { Span, SpanEval, SpanFeedback } from "@/lib/types";
 import { formatDurationNS } from "@/lib/format";
 
 function scoreColorClasses(score: number): string {
@@ -87,6 +87,11 @@ export default function RunPage({
   const { data: evals } = useQuery({
     queryKey: ["evals", runId],
     queryFn: () => evalsApi.listByRun(runId, projectId),
+  });
+
+  const { data: evalGroups } = useQuery({
+    queryKey: ["evalsGrouped", runId],
+    queryFn: () => evalsApi.listByRunGrouped(runId, projectId),
   });
 
   const { data: loops } = useQuery({
@@ -180,8 +185,11 @@ export default function RunPage({
       <SpanDetailDrawer
         span={selectedSpan}
         evals={selectedEvals}
+        evalGroups={evalGroups}
         runStartTime={run?.StartTime ?? ""}
         onClose={() => setSelectedSpanId(null)}
+        projectId={projectId}
+        runId={runId}
       />
     </div>
   );

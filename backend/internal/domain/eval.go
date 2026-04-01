@@ -10,9 +10,27 @@ type SpanEval struct {
 	EvalName    string
 	Score       float32 // 0.0 – 1.0
 	Reasoning   string
-	JudgeModel  string
+	JudgeModel  string // which model produced this score
 	EvalVersion uint16
 	CreatedAt   time.Time
+}
+
+// ModelScore holds the score and reasoning from a single judge model.
+type ModelScore struct {
+	Model     string
+	Score     float32
+	Reasoning string
+}
+
+// SpanEvalGroup aggregates scores from multiple judge models for a single (span, eval) pair.
+// ConsensusScore is nil if not all configured models have scored yet.
+// Disagreement is only set when ConsensusScore is non-nil and max-min score > 0.2.
+type SpanEvalGroup struct {
+	SpanID         string
+	EvalName       string
+	Scores         []ModelScore
+	ConsensusScore *float32
+	Disagreement   bool
 }
 
 // RunEvalSummary aggregates quality scores for one eval type across all spans in a run.
@@ -27,12 +45,13 @@ type RunEvalSummary struct {
 type EvalConfig struct {
 	ID             string
 	ProjectID      string
-	EvalName       string             // built-in name or "custom:<name>"
+	EvalName       string              // built-in name or "custom:<name>"
 	Enabled        bool
-	SpanKind       string             // "llm.call" or "tool.call"
-	PromptTemplate *string            // nil = use built-in Go implementation
+	SpanKind       string              // "llm.call" or "tool.call"
+	PromptTemplate *string             // nil = use built-in Go implementation
 	PromptVersion  int
 	ScopeFilter    map[string][]string // nil = match all spans; {"agent_name": ["researcher"]} = only that agent
+	JudgeModels    []string            // judge model IDs; default ["claude-haiku-4-5"]
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -57,10 +76,11 @@ type EvalBaseline struct {
 
 // EvalJob is a pending unit of work in the eval queue.
 type EvalJob struct {
-	ID        string
-	SpanID    string
-	RunID     string
-	ProjectID string
-	EvalName  string
-	Attempts  int
+	ID         string
+	SpanID     string
+	RunID      string
+	ProjectID  string
+	EvalName   string
+	JudgeModel string // which model this job is for
+	Attempts   int
 }

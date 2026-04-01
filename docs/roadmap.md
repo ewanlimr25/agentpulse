@@ -1,8 +1,11 @@
 # AgentPulse Roadmap
 
-Last updated: 2026-03-29
+Last updated: 2026-03-30
 
 Items #1–#12 are complete. This document covers everything remaining, consolidated from the original tier 2/3 items and the enterprise/security feedback round.
+
+**Completed since last update (2026-03-30):**
+- **B. PII / Secret Redaction** shipped: `piimaskerproc` collector processor with 14 built-in patterns; per-project toggle via `project_pii_configs` Postgres table; `GET/PUT /projects/{id}/settings` API (BearerAuth + AdminKeyAuth); Settings tab in frontend; Postgres LISTEN/NOTIFY for near-instant propagation; fail-closed on DB unavailability; customer-extensible regex rules with tautological/invalid rejection; `pii_redactions_count` span attribute; `make seed` seeds `customer-support-bot` with PII demo data
 
 **Completed since last update (2026-03-29):**
 - **Quality Gates** (item C below) shipped: `agentpulse eval check` CLI, `GET /evals/baseline` endpoint, rate limiting on project-scoped routes, GitHub Actions docs
@@ -12,6 +15,8 @@ Items #1–#12 are complete. This document covers everything remaining, consolid
 - **A1** `ListRecent` data leak fixed: routes moved into authenticated project group, SQL scoped to `project_id`
 - **A2** WebSocket project-scope gap fixed: `ServeWS` verifies Bearer token ownership before upgrading; shared `authutil` package extracted
 - **A3** Rate limiter memory leak fixed: struct-based `RateLimiter` with background eviction ticker; run-scoped routes now rate-limited via `ProjectFromContext` fallback
+- **A4** CORS wildcard tightened: `NewCORS()` factory reads `CORS_ALLOWED_ORIGINS` + `APP_ENV`; wildcard only in dev mode; prod uses per-request origin matching with `Vary: Origin`
+- **A5** Collector rate limiting: `ratelimitproc` token-bucket processor (per `agentpulse.project_id`); first in pipeline before `batch`; fail-open for spans with no project ID; stale-bucket eviction
 
 ---
 
@@ -33,29 +38,27 @@ The IDOR fix shipped the highest-severity issues. Four lower-severity items rema
 The in-memory token-bucket map (`ratelimit.go`) grows unboundedly — one entry per project ID, never evicted. Under churn (many short-lived projects or fuzz input), this is an OOM vector.
 - Fix: add a background ticker that evicts buckets idle for >10 minutes, or use a size-bounded LRU.
 
-**A4. CORS wildcard** _(~30m)_
-`Access-Control-Allow-Origin: *` is set globally. Fine for an open API, but allows any website to make credentialed requests. Once JWT auth lands (item G), this must be tightened to an explicit origin allowlist.
-- Fix: read allowed origins from config; default to `*` only in dev mode.
+**A4. CORS wildcard** ✅ COMPLETE
+- `NewCORS(allowedOrigins, devMode)` factory; `CORS_ALLOWED_ORIGINS` env var (comma-separated); `APP_ENV=development` (default) preserves wildcard; prod mode echoes matched origin + `Vary: Origin`; non-matching origins receive no ACAO header; startup warning when prod mode and origins unset; 5 tests
 
-**A5. API Rate Limiting — collector** _(~1d)_
-`POST /v1/traces` in the OTel collector is still unprotected. A stuck agent in an infinite loop can flood ingestion with no back-pressure.
-- Fix: token-bucket per `agentpulse.project_id` attribute in the collector pipeline; drop/429 excess batches.
+**A5. API Rate Limiting — collector** ✅ COMPLETE
+- `ratelimitproc` processor: token-bucket per `agentpulse.project_id`; default 100/s, burst 200; first in pipeline (before `batch`); drops excess `ResourceSpan`s via `RemoveIf`; fail-open for spans with no project ID; background stale-bucket eviction; dev config uses 1000/s; 12 tests (race-clean)
 
 **Priority order:** A1 and A2 before any external users see the product. A3 before sustained load. A4 deferred until JWT auth. A5 before cloud launch.
 
 ---
 
-### B. PII / Secret Redaction
+### B. PII / Secret Redaction ✅ COMPLETE
 
-**Why second:** the #1 enterprise adoption blocker. LLM prompts carry user names, emails, customer data, and accidentally stringified API keys. Without redaction, no enterprise team can legally point their agents at AgentPulse.
-
-**Implementation:** new `piimaskerproc` collector processor inserted between `agentsemanticproc` and `clickhouseexporter`. Config-driven YAML rules:
-- Built-in patterns: credit card numbers, SSNs, email addresses, JWT tokens, API key prefixes (`sk-`, `Bearer `, etc.)
-- Customer-extensible: additional regex rules in `config/pii_rules.yaml`
-- Field allowlist: certain attributes (`agentpulse.run_id`, `agentpulse.span_kind`) are never scanned
-- Replacement format: `[REDACTED:<type>]` (e.g. `[REDACTED:email]`)
-
-**Effort:** ~3 days.
+- `piimaskerproc` processor: 14 built-in patterns (credit card, SSN, email, JWT, OpenAI/Anthropic/AWS/GitHub/Stripe/Google/Slack API keys, PEM headers, US phone); combined alternation regex for early-exit; per-pattern `[REDACTED:<name>]` replacement
+- Per-project toggle: `project_pii_configs` Postgres table; lazy row creation on first `PUT /settings`; `pii_redaction_enabled` + `pii_custom_rules JSONB`
+- Separate `admin_key_hash` on `projects` (SDK Bearer token ≠ compliance settings key); `X-Admin-Key` header; `AdminKeyAuth` middleware
+- `GET /projects/{id}/settings` (BearerAuth) + `PUT /projects/{id}/settings` (AdminKeyAuth); tautological/invalid regex rejected 400; max 20 custom rules; structured `slog` audit log; `pg_notify('pii_settings_changed')` for near-instant propagation
+- Fail-closed: if Postgres unreachable at startup, built-in patterns applied to all spans
+- Collector reads enabled projects via Postgres LISTEN/NOTIFY + 30s fallback poll; field allowlist skips `agentpulse.*` structural attributes and resource service attrs; stamps `agentpulse.pii_redactions_count` on redacted spans
+- Frontend: Settings tab on project page; toggle with amber irreversibility warning; built-in pattern grid; custom rules table with add/remove + inline validation; read-only mode when admin key not in localStorage
+- `make seed`: `customer-support-bot` project has PII redaction enabled; `scenarioSupportTriagePII` seeds realistic prompts/completions containing emails, credit cards, SSNs, API keys, phone numbers
+- Migration: `migrations/postgres/006_project_pii_configs.up.sql`; pipeline order: `ratelimitproc → batch → agentsemanticproc → piimaskerproc → budgetenforceproc → clickhouseexporter`
 
 ---
 
@@ -70,7 +73,7 @@ The in-memory token-bucket map (`ratelimit.go`) grows unboundedly — one entry 
 
 ---
 
-### D. Human-in-the-Loop Evals
+### D. Human-in-the-Loop Evals ✅ COMPLETE
 
 **Why here:** the quality gate baseline today is driven purely by the LLM judge. Human thumbs-up/down on individual span outputs is the ground truth that corrects judge drift and builds a per-project calibration dataset. This is the natural follow-on to quality gates — it makes the scores you're gating on trustworthy.
 
@@ -85,7 +88,7 @@ The in-memory token-bucket map (`ratelimit.go`) grows unboundedly — one entry 
 
 ---
 
-### E. Multi-Model Eval Scoring
+### E. Multi-Model Eval Scoring ✅ COMPLETE
 
 **Why after HitL:** once human ratings exist, you have ground truth to compare judge models against. Running multiple judges and surfacing disagreement is most useful when you can already see which judge is wrong. Disagreement between judges is itself a signal — high variance flags spans for human review.
 
@@ -168,12 +171,12 @@ Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `a
 | A1 | `ListRecent` unauthenticated (cross-project data leak) | ✅ Done | — |
 | A2 | WebSocket auth project-scope gap | ✅ Done | — |
 | A3 | Rate limiter memory leak | ✅ Done | — |
-| A4 | CORS wildcard (defer until JWT auth) | ~30m | 🟠 Tier 2 |
-| A5 | Collector rate limiting (`POST /v1/traces`) | ~1d | 🔴 Tier 1 |
-| B | PII / Secret Redaction | 3d | 🔴 Tier 1 |
+| A4 | CORS wildcard | ✅ Done | — |
+| A5 | Collector rate limiting (`POST /v1/traces`) | ✅ Done | — |
+| B | PII / Secret Redaction | ✅ Done | — |
 | C | Quality Gates | ✅ Done | — |
-| D | Human-in-the-Loop Evals | 2d | 🟠 Tier 2 |
-| E | Multi-Model Eval Scoring | 4d | 🟠 Tier 2 |
+| D | Human-in-the-Loop Evals | ✅ Done | — |
+| E | Multi-Model Eval Scoring | ✅ Done | — |
 | F | Payload Offloading (S3) | 3d | 🟠 Tier 2 |
 | G | Team & Enterprise Auth (phases 1+3 first) | 1.5–4w | 🟠 Tier 2 |
 | H | Agent Replay / Sandbox Debugging | 2–3w | 🟡 Tier 3 |

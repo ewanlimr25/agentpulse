@@ -4,6 +4,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { evalsApi } from "@/lib/api";
 
+const AVAILABLE_JUDGE_MODELS = [
+  { id: "claude-haiku-4-5", label: "claude-haiku-4-5" },
+  { id: "gpt-4o-mini", label: "gpt-4o-mini" },
+  { id: "gemini-2.0-flash", label: "gemini-2.0-flash" },
+] as const;
+
 interface Props {
   projectId: string;
   onClose: () => void;
@@ -15,7 +21,19 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
   const [spanKind, setSpanKind] = useState<"llm.call" | "tool.call">("llm.call");
   const [promptTemplate, setPromptTemplate] = useState("");
   const [agentFilter, setAgentFilter] = useState(""); // comma-separated agent names
+  const [judgeModels, setJudgeModels] = useState<string[]>(["claude-haiku-4-5"]);
   const [error, setError] = useState("");
+
+  function toggleJudgeModel(modelId: string) {
+    setJudgeModels((prev) => {
+      if (prev.includes(modelId)) {
+        // Always keep at least one model selected
+        if (prev.length === 1) return prev;
+        return prev.filter((m) => m !== modelId);
+      }
+      return [...prev, modelId];
+    });
+  }
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -26,6 +44,7 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
         span_kind: spanKind,
         prompt_template: promptTemplate.trim(),
         ...(agents.length > 0 ? { scope_filter: { agent_name: agents } } : {}),
+        judge_models: judgeModels,
       });
     },
     onSuccess: () => {
@@ -98,6 +117,27 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
               className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
             <p className="text-xs text-[var(--text-muted)] mt-1">Comma-separated agent names. Leave blank to run on all agents.</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-muted)] mb-1.5">Judge Models</label>
+            <div className="flex flex-col gap-2">
+              {AVAILABLE_JUDGE_MODELS.map((model) => (
+                <label key={model.id} className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={judgeModels.includes(model.id)}
+                    onChange={() => toggleJudgeModel(model.id)}
+                    className="accent-indigo-500 w-3.5 h-3.5"
+                  />
+                  <span className="text-sm font-mono text-[var(--text)]">{model.label}</span>
+                  {model.id === "claude-haiku-4-5" && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/40 border border-indigo-700/50 text-indigo-400">default</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">Multiple models increase eval cost proportionally.</p>
           </div>
 
           <div>

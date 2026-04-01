@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery, useInfiniteQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import Link from "next/link";
 import { projectsApi, evalsApi, searchApi, AuthError } from "@/lib/api";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { saveApiKey, removeApiKey } from "@/lib/api-keys";
 import { Navbar } from "@/components/Navbar";
 import { ApiKeyPrompt } from "@/components/ApiKeyPrompt";
@@ -61,13 +62,14 @@ export default function ProjectPage({
 }) {
   const { projectId } = use(params);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users">(
+  const [activeTab, setActiveTab] = useState<"overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users" | "settings">(
     searchParams.get("tab") === "budget" ? "budget" :
     searchParams.get("tab") === "alerts" ? "alerts" :
     searchParams.get("tab") === "services" ? "services" :
     searchParams.get("tab") === "evals" ? "evals" :
     searchParams.get("tab") === "sessions" ? "sessions" :
-    searchParams.get("tab") === "users" ? "users" : "overview"
+    searchParams.get("tab") === "users" ? "users" :
+    searchParams.get("tab") === "settings" ? "settings" : "overview"
   );
 
   const queryClient = useQueryClient();
@@ -242,9 +244,10 @@ export default function ProjectPage({
                 { key: "evals", label: "Evals" },
                 { key: "sessions", label: "Sessions" },
                 { key: "users", label: "Users" },
+                { key: "settings", label: "Settings" },
               ]}
               activeTab={activeTab}
-              onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users")}
+              onTabChange={(k) => setActiveTab(k as "overview" | "budget" | "alerts" | "services" | "evals" | "sessions" | "users" | "settings")}
             />
 
             {activeTab === "overview" && (
@@ -270,6 +273,8 @@ export default function ProjectPage({
             {activeTab === "sessions" && <SessionsSection projectId={projectId} />}
 
             {activeTab === "users" && <UsersSection projectId={projectId} />}
+
+            {activeTab === "settings" && <SettingsSection projectId={projectId} />}
           </>
         )}
       </main>

@@ -2,13 +2,16 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/api/handler"
 	"github.com/agentpulse/agentpulse/backend/internal/api/middleware"
+	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
@@ -28,13 +31,19 @@ func NewRouter(
 	sessions store.SessionStore,
 	users store.UserStore,
 	search store.SearchStore,
+	piiConfigs store.ProjectPIIConfigStore,
+	spanFeedback store.SpanFeedbackStore,
+	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
+	corsAllowedOrigins []string,
+	corsDevMode bool,
+	providerKeys eval.ProviderKeys,
 ) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
 	r.Use(chimw.Recoverer)
-	r.Use(middleware.CORS)
+	r.Use(middleware.NewCORS(corsAllowedOrigins, corsDevMode))
 	r.Use(middleware.Logger)
 
 	// Health check — always public
@@ -46,16 +55,20 @@ func NewRouter(
 	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
-	evalHandler := handler.NewEvalHandler(evals)
-	evalConfigHandler := handler.NewEvalConfigHandler(evalConfigs)
+	evalHandler := handler.NewEvalHandler(evals, spanFeedback)
+	evalConfigHandler := handler.NewEvalConfigHandlerWithKeys(evalConfigs, providerKeys)
 	alertHandler := handler.NewAlertRuleHandler(alertRules)
 	analyticsHandler := handler.NewAnalyticsHandler(analytics)
 	loopHandler := handler.NewLoopHandler(loops)
 	sessionHandler := handler.NewSessionHandler(sessions, runs)
 	userHandler := handler.NewUserHandler(users)
 	searchHandler := handler.NewSearchHandler(search)
+	settingsHandler := handler.NewSettingsHandler(piiConfigs, pgPool)
+	feedbackWriteLimiter := middleware.NewRateLimiter(10, time.Minute)
+	spanFeedbackHandler := handler.NewSpanFeedbackHandler(spanFeedback)
 
 	bearerAuth := middleware.BearerAuth(projects)
+	adminKeyAuth := middleware.AdminKeyAuth(projects)
 	runAuth := middleware.RunAuth(projects, runs)
 
 	r.Route("/api/v1", func(r chi.Router) {
@@ -108,6 +121,25 @@ func NewRouter(
 			})
 
 			r.Get("/search", searchHandler.Search)
+
+			// Span feedback — human-in-the-loop ratings.
+			// POST uses a tighter write limiter (10/min) to prevent bulk phantom writes.
+			// GET/DELETE share the default 60/min bucket from the parent group.
+			r.With(feedbackWriteLimiter.Middleware()).
+				Post("/spans/{spanID}/feedback", spanFeedbackHandler.Upsert)
+			r.Get("/spans/{spanID}/feedback", spanFeedbackHandler.Get)
+			r.Delete("/spans/{spanID}/feedback", spanFeedbackHandler.Delete)
+			r.Get("/runs/{runID}/feedback", spanFeedbackHandler.ListByRun)
+
+			// Settings (read) — authenticated via BearerAuth inherited from parent route group.
+			r.Get("/settings", settingsHandler.GetSettings)
+		})
+
+		// Settings (write) — authenticated via AdminKeyAuth (separate from SDK Bearer token).
+		// Mounted outside the bearerAuth group since it uses a different auth mechanism.
+		r.Route("/projects/{projectID}/settings", func(r chi.Router) {
+			r.Use(adminKeyAuth)
+			r.Put("/", settingsHandler.PutSettings)
 		})
 
 		// ── Run-scoped routes ─────────────────────────────────────────────────
@@ -119,6 +151,7 @@ func NewRouter(
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
 			r.Get("/evals", evalHandler.ListByRun)
+			r.Get("/evals/grouped", evalHandler.ListByRunGrouped)
 			r.Get("/loops", loopHandler.ListByRun)
 			r.Route("/topology", func(r chi.Router) {
 				topologyHandler.Routes(r)

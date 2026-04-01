@@ -1,7 +1,14 @@
 import type { RunEvalSummary } from "@/lib/types";
 
+interface FeedbackStats {
+  good: number;
+  bad: number;
+  total: number;
+}
+
 interface Props {
   summaries: RunEvalSummary[];
+  feedbackStats?: FeedbackStats;
 }
 
 function scoreColor(score: number): string {
@@ -19,8 +26,8 @@ function scoreBg(score: number): string {
 /**
  * A row of metric cards — one per active eval type — showing the recent average score.
  */
-export function EvalHealthCards({ summaries }: Props) {
-  if (summaries.length === 0) return null;
+export function EvalHealthCards({ summaries, feedbackStats }: Props) {
+  if (summaries.length === 0 && (!feedbackStats || feedbackStats.total === 0)) return null;
 
   // Group summaries by eval_name, compute overall avg per type.
   const byType = new Map<string, number[]>();
@@ -46,6 +53,16 @@ export function EvalHealthCards({ summaries }: Props) {
           </div>
         );
       })}
+      {feedbackStats && feedbackStats.total > 0 && (
+        <div className="rounded-xl border border-zinc-700/50 bg-zinc-900/20 px-4 py-3">
+          <p className="text-xs text-[var(--text-muted)] mb-1">Human Feedback</p>
+          <div className="flex items-center gap-2">
+            <span className="text-green-400 font-mono text-sm">&#128077; {feedbackStats.good}</span>
+            <span className="text-red-400 font-mono text-sm">&#128078; {feedbackStats.bad}</span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">{feedbackStats.total} rated</p>
+        </div>
+      )}
     </div>
   );
 }

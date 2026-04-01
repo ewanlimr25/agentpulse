@@ -96,6 +96,7 @@ export function EvalConfigTable({ projectId, configs, onAddCustom }: Props) {
             <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
               <th className="text-left px-4 py-2.5 text-xs font-medium text-[var(--text-muted)]">Type</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-[var(--text-muted)]">Span Kind</th>
+              <th className="text-left px-4 py-2.5 text-xs font-medium text-[var(--text-muted)]">Judge Models</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-[var(--text-muted)]">Status</th>
               <th className="px-4 py-2.5" />
             </tr>
@@ -118,6 +119,17 @@ export function EvalConfigTable({ projectId, configs, onAddCustom }: Props) {
                   ) : null}
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--text-muted)] font-mono">{cfg.SpanKind}</td>
+                <td className="px-4 py-3">
+                  {cfg.JudgeModels && cfg.JudgeModels.length > 1 ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-950/40 border border-blue-700/50 text-blue-400">
+                      {cfg.JudgeModels.length} models
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-muted)] font-mono">
+                      {cfg.JudgeModels?.[0] ?? "claude-haiku-4-5"}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`text-xs font-medium ${cfg.Enabled ? "text-green-400" : "text-[var(--text-muted)]"}`}>
                     {cfg.Enabled ? "Active" : "Inactive"}

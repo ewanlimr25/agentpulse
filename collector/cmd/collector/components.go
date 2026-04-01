@@ -12,6 +12,8 @@ import (
 	"github.com/agentpulse/agentpulse/collector/exporter/topologyexporter"
 	"github.com/agentpulse/agentpulse/collector/processor/agentsemanticproc"
 	"github.com/agentpulse/agentpulse/collector/processor/budgetenforceproc"
+	"github.com/agentpulse/agentpulse/collector/processor/piimaskerproc"
+	"github.com/agentpulse/agentpulse/collector/processor/ratelimitproc"
 )
 
 // components returns the full set of factories for the AgentPulse collector.
@@ -37,7 +39,9 @@ func components() (otelcol.Factories, error) {
 
 	// Processors
 	factories.Processors, err = otelcol.MakeFactoryMap(
+		ratelimitproc.NewFactory(),      // per-project ingestion rate limiting
 		agentsemanticproc.NewFactory(),  // agent span classification + cost
+		piimaskerproc.NewFactory(),      // PII / secret redaction
 		budgetenforceproc.NewFactory(),  // budget enforcement + alerting
 		batchprocessor.NewFactory(),     // standard batching
 	)

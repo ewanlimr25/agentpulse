@@ -61,6 +61,8 @@ func main() {
 	evalConfigStore := pgstore.NewEvalConfigStore(pgPool)
 	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
 	loopStore := pgstore.NewLoopStore(pgPool)
+	piiConfigStore := pgstore.NewProjectPIIConfigStore(pgPool)
+	spanFeedbackStore := pgstore.NewSpanFeedbackStore(pgPool)
 
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -76,17 +78,26 @@ func main() {
 	slog.Info("loop detector started")
 
 	// ── Eval workers ──────────────────────────────────────────────────────
-	if cfg.AnthropicAPIKey != "" {
+	// Start the eval pipeline if at least one judge provider key is configured.
+	providerKeys := eval.ProviderKeys{
+		Anthropic: cfg.AnthropicAPIKey,
+		OpenAI:    cfg.OpenAIAPIKey,
+		Google:    cfg.GoogleAIAPIKey,
+	}
+	if cfg.AnthropicAPIKey != "" || cfg.OpenAIAPIKey != "" || cfg.GoogleAIAPIKey != "" {
 		// Worker reloads registry from evalConfigStore every 60s to pick up new custom evals.
 		go eval.NewEnqueuer(chConn, evalJobStore, evalConfigStore).Run(ctx)
-		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, cfg.AnthropicAPIKey).Run(ctx)
+		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, providerKeys).Run(ctx)
 		slog.Info("eval worker started")
 	} else {
-		slog.Info("eval worker disabled (ANTHROPIC_API_KEY not set)")
+		slog.Info("eval worker disabled (no judge provider API keys set)")
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, hub)
+	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
+		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
+	}
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

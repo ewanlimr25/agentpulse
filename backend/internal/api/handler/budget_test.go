@@ -70,6 +70,9 @@ func (m *mockProjectStoreForBudget) GetByAPIKeyHash(_ context.Context, hash stri
 	}
 	return p, nil
 }
+func (m *mockProjectStoreForBudget) GetByAdminKeyHash(_ context.Context, _ string) (*domain.Project, error) {
+	return nil, fmt.Errorf("not found")
+}
 
 // buildBudgetRouter builds a full Chi router that mounts ListRecent behind
 // BearerAuth, mirroring the production route at:

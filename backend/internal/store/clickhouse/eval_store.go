@@ -21,12 +21,18 @@ LIMIT ?
 `
 
 // baselineEvalsQuery aggregates per-eval-type scores for a specific set of run IDs.
-// FINAL ensures dedup on the ReplacingMergeTree. project_id filter leverages the
-// sort-key prefix for efficient pruning before the IN clause scan.
+// Uses two-level aggregation so multi-model scoring doesn't inflate the baseline
+// by counting each model's score separately:
+//   Step 1: per-span consensus (avg across judge models)
+//   Step 2: avg consensus across spans, plus distinct run count
 const baselineEvalsQuery = `
-SELECT eval_name, avg(score) AS avg_score, count() AS span_count, countDistinct(run_id) AS run_count
-FROM span_evals FINAL
-WHERE project_id = ? AND run_id IN (?)
+SELECT eval_name, avg(span_consensus) AS avg_score, count() AS span_count, countDistinct(run_id) AS run_count
+FROM (
+    SELECT span_id, eval_name, run_id, avg(score) AS span_consensus
+    FROM span_evals FINAL
+    WHERE project_id = ? AND run_id IN (?)
+    GROUP BY span_id, eval_name, run_id
+)
 GROUP BY eval_name
 ORDER BY eval_name
 `
@@ -77,6 +83,101 @@ func (s *EvalStore) ListByRun(ctx context.Context, runID string) ([]*domain.Span
 		evals = append(evals, e)
 	}
 	return evals, rows.Err()
+}
+
+// listEvalsByRunGroupedQuery fetches the same rows as listEvalsByRunQuery but ordered
+// to make the Go-side grouping loop simple. FINAL deduplicates the ReplacingMergeTree.
+const listEvalsByRunGroupedQuery = `
+SELECT project_id, run_id, span_id, eval_name, score, reasoning, judge_model, eval_version, created_at
+FROM span_evals FINAL
+WHERE run_id = ?
+ORDER BY span_id, eval_name, judge_model
+`
+
+// groupKey is the map key used when building SpanEvalGroups.
+type groupKey struct {
+	spanID   string
+	evalName string
+}
+
+// ListByRunGrouped fetches all evals for a run and groups them by (span_id, eval_name).
+// For each group it computes:
+//   - Scores      — one ModelScore per judge_model
+//   - ConsensusScore — mean of all scores in the group (always set when ≥1 score)
+//   - Disagreement   — true when max(scores) - min(scores) > 0.2
+func (s *EvalStore) ListByRunGrouped(ctx context.Context, runID string) ([]*domain.SpanEvalGroup, error) {
+	rows, err := s.conn.Query(ctx, listEvalsByRunGroupedQuery, runID)
+	if err != nil {
+		return nil, fmt.Errorf("eval_store list_by_run_grouped: %w", err)
+	}
+	defer rows.Close()
+
+	// Use a slice + map to preserve insertion order of groups.
+	var order []groupKey
+	groups := make(map[groupKey]*domain.SpanEvalGroup)
+
+	for rows.Next() {
+		e := &domain.SpanEval{}
+		var createdAt time.Time
+		if err := rows.Scan(
+			&e.ProjectID, &e.RunID, &e.SpanID, &e.EvalName,
+			&e.Score, &e.Reasoning, &e.JudgeModel, &e.EvalVersion, &createdAt,
+		); err != nil {
+			return nil, fmt.Errorf("eval_store list_by_run_grouped scan: %w", err)
+		}
+		e.CreatedAt = createdAt.UTC()
+
+		k := groupKey{spanID: e.SpanID, evalName: e.EvalName}
+		g, exists := groups[k]
+		if !exists {
+			g = &domain.SpanEvalGroup{
+				SpanID:   e.SpanID,
+				EvalName: e.EvalName,
+			}
+			groups[k] = g
+			order = append(order, k)
+		}
+		g.Scores = append(g.Scores, domain.ModelScore{
+			Model:     e.JudgeModel,
+			Score:     e.Score,
+			Reasoning: e.Reasoning,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("eval_store list_by_run_grouped rows: %w", err)
+	}
+
+	// Compute consensus and disagreement for each group.
+	result := make([]*domain.SpanEvalGroup, 0, len(order))
+	for _, k := range order {
+		g := groups[k]
+		n := len(g.Scores)
+		if n == 0 {
+			result = append(result, g)
+			continue
+		}
+
+		var sum, minScore, maxScore float32
+		minScore = g.Scores[0].Score
+		maxScore = g.Scores[0].Score
+		for _, ms := range g.Scores {
+			sum += ms.Score
+			if ms.Score < minScore {
+				minScore = ms.Score
+			}
+			if ms.Score > maxScore {
+				maxScore = ms.Score
+			}
+		}
+		consensus := sum / float32(n)
+		g.ConsensusScore = &consensus
+		if maxScore-minScore > 0.2 {
+			g.Disagreement = true
+		}
+		result = append(result, g)
+	}
+
+	return result, nil
 }
 
 const summaryByProjectQuery = `

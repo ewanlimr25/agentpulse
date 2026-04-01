@@ -21,7 +21,9 @@ func NewEvalConfigStore(pool *pgxpool.Pool) *EvalConfigStore {
 }
 
 const evalConfigColumns = `id, project_id, eval_name, enabled, span_kind,
-	prompt_template, prompt_version, scope_filter, created_at, updated_at`
+	prompt_template, prompt_version, scope_filter, judge_models, created_at, updated_at`
+
+const defaultJudgeModel = "claude-haiku-4-5"
 
 func scanEvalConfig(row interface {
 	Scan(...any) error
@@ -29,9 +31,10 @@ func scanEvalConfig(row interface {
 	c := &domain.EvalConfig{}
 	var createdAt, updatedAt time.Time
 	var scopeFilterJSON []byte
+	var judgeModels []string
 	err := row.Scan(
 		&c.ID, &c.ProjectID, &c.EvalName, &c.Enabled, &c.SpanKind,
-		&c.PromptTemplate, &c.PromptVersion, &scopeFilterJSON, &createdAt, &updatedAt,
+		&c.PromptTemplate, &c.PromptVersion, &scopeFilterJSON, &judgeModels, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -40,6 +43,11 @@ func scanEvalConfig(row interface {
 	c.UpdatedAt = updatedAt.UTC()
 	if len(scopeFilterJSON) > 0 && string(scopeFilterJSON) != "{}" {
 		_ = json.Unmarshal(scopeFilterJSON, &c.ScopeFilter)
+	}
+	if len(judgeModels) == 0 {
+		c.JudgeModels = []string{defaultJudgeModel}
+	} else {
+		c.JudgeModels = judgeModels
 	}
 	return c, nil
 }
@@ -96,10 +104,15 @@ func (s *EvalConfigStore) Upsert(ctx context.Context, cfg *domain.EvalConfig) er
 		scopeFilterJSON = []byte("{}")
 	}
 
+	judgeModels := cfg.JudgeModels
+	if len(judgeModels) == 0 {
+		judgeModels = []string{defaultJudgeModel}
+	}
+
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO project_eval_configs
-		  (id, project_id, eval_name, enabled, span_kind, prompt_template, prompt_version, scope_filter)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		  (id, project_id, eval_name, enabled, span_kind, prompt_template, prompt_version, scope_filter, judge_models)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (project_id, eval_name) DO UPDATE SET
 		  enabled         = EXCLUDED.enabled,
 		  span_kind       = EXCLUDED.span_kind,
@@ -110,9 +123,10 @@ func (s *EvalConfigStore) Upsert(ctx context.Context, cfg *domain.EvalConfig) er
 		    ELSE project_eval_configs.prompt_version
 		  END,
 		  scope_filter    = EXCLUDED.scope_filter,
+		  judge_models    = EXCLUDED.judge_models,
 		  updated_at      = now()
 	`, cfg.ID, cfg.ProjectID, cfg.EvalName, cfg.Enabled, cfg.SpanKind,
-		cfg.PromptTemplate, cfg.PromptVersion, scopeFilterJSON)
+		cfg.PromptTemplate, cfg.PromptVersion, scopeFilterJSON, judgeModels)
 	if err != nil {
 		return fmt.Errorf("eval_config_store upsert: %w", err)
 	}

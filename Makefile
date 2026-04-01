@@ -33,6 +33,8 @@ migrate-up: ## Apply all pending migrations
 	@echo "Applying Postgres migrations..."
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/001_initial.up.sql
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/002_eval_jobs.up.sql
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/002_alert_rules.up.sql
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/003_run_loops.up.sql
 	@echo "Applying ClickHouse migrations..."
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/001_spans.sql
@@ -58,6 +60,8 @@ migrate-up: ## Apply all pending migrations
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/011_user_agg.sql
 	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/005_budget_scope_user.up.sql
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/006_project_pii_configs.up.sql
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < migrations/postgres/007_span_feedback.up.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \
 		--database agentpulse < migrations/clickhouse/012_search_indexes.sql
 	docker compose exec -T clickhouse clickhouse-client --user agentpulse --password agentpulse \

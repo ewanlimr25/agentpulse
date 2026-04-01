@@ -46,6 +46,12 @@ type createProjectRequest struct {
 	Name string `json:"name"`
 }
 
+type createProjectResponse struct {
+	Project  *domain.Project `json:"project"`
+	APIKey   string          `json:"api_key"`
+	AdminKey string          `json:"admin_key"`
+}
+
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
@@ -55,14 +61,19 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Generate a random API key and store its hash.
 	rawKey := uuid.New().String()
-	hash := sha256.Sum256([]byte(rawKey))
+	apiKeyHash := sha256.Sum256([]byte(rawKey))
+
+	// Generate a separate admin key for settings mutations.
+	rawAdminKey := uuid.New().String()
+	adminKeyHash := sha256.Sum256([]byte(rawAdminKey))
 
 	p := &domain.Project{
-		ID:         uuid.New().String(),
-		Name:       req.Name,
-		APIKeyHash: hex.EncodeToString(hash[:]),
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:           uuid.New().String(),
+		Name:         req.Name,
+		APIKeyHash:   hex.EncodeToString(apiKeyHash[:]),
+		AdminKeyHash: hex.EncodeToString(adminKeyHash[:]),
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	if err := h.projects.Create(r.Context(), p); err != nil {
@@ -70,9 +81,10 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return the raw key once — it is never recoverable after this.
-	httputil.JSON(w, http.StatusCreated, map[string]any{
-		"project": p,
-		"api_key": rawKey,
+	// Return both raw keys once — they are never recoverable after this.
+	httputil.JSON(w, http.StatusCreated, createProjectResponse{
+		Project:  p,
+		APIKey:   rawKey,
+		AdminKey: rawAdminKey,
 	})
 }

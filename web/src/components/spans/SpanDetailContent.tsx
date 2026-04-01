@@ -1,12 +1,21 @@
-import type { Span, SpanEval } from "@/lib/types";
+"use client";
+
+import { useState } from "react";
+import type { Span, SpanEval, SpanEvalGroup, SpanFeedback, FeedbackRequest } from "@/lib/types";
 import { SpanKindBadge } from "./SpanKindBadge";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { formatDurationNS } from "@/lib/format";
+import { spanFeedbackApi } from "@/lib/api";
 
 interface Props {
   span: Span;
   evals?: SpanEval[];
+  evalGroups?: SpanEvalGroup[];
   runStartTime: string;
+  projectId: string;
+  runId: string;
+  feedback?: SpanFeedback | null;
+  onFeedbackChange?: (feedback: SpanFeedback | null) => void;
 }
 
 function evalScoreClasses(score: number): string {
@@ -68,7 +77,39 @@ function groupAttributes(attrs: Record<string, string>): [string, [string, strin
   return sorted;
 }
 
-export function SpanDetailContent({ span, evals, runStartTime }: Props) {
+export function SpanDetailContent({ span, evals, evalGroups, runStartTime, projectId, runId, feedback, onFeedbackChange }: Props) {
+  const [localFeedback, setLocalFeedback] = useState<SpanFeedback | null>(feedback ?? null);
+  const [correctedOutput, setCorrectedOutput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleRate(rating: "good" | "bad") {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const req: FeedbackRequest = { run_id: runId, rating };
+      if (rating === "bad" && correctedOutput.trim()) {
+        req.corrected_output = correctedOutput.trim();
+      }
+      const updated = await spanFeedbackApi.upsert(projectId, span.SpanID, req);
+      setLocalFeedback(updated);
+      onFeedbackChange?.(updated);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRemove() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await spanFeedbackApi.delete(projectId, span.SpanID);
+      setLocalFeedback(null);
+      onFeedbackChange?.(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const runStart = new Date(runStartTime).getTime();
   const spanStart = new Date(span.StartTime).getTime();
   const offsetMS = spanStart - runStart;
@@ -127,33 +168,179 @@ export function SpanDetailContent({ span, evals, runStartTime }: Props) {
         </div>
       </div>
 
-      {/* Quality Scores — one card per eval type */}
-      {evals && evals.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
-            {evals.length === 1 ? "Quality Score" : "Quality Scores"}
-          </p>
-          <div className="flex flex-col gap-3">
-            {evals.map((spanEval) => (
-              <div key={spanEval.EvalName} className={`rounded-lg p-3 ${evalScoreClasses(spanEval.Score)}`}>
-                <div className="flex items-center gap-3 mb-1.5">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-sm font-mono tabular-nums ${evalScoreClasses(spanEval.Score)}`}>
-                    <span>●</span>
-                    <span>{spanEval.Score.toFixed(2)}</span>
-                  </span>
-                  <span className="text-xs text-[var(--text-muted)] capitalize">{spanEval.EvalName.replace(/_/g, " ")}</span>
+      {/* Quality Scores — grouped multi-model view when available, flat fallback otherwise */}
+      {(() => {
+        // Build a map of eval name -> group for this span
+        const groupMap = new Map<string, SpanEvalGroup>();
+        if (evalGroups) {
+          for (const g of evalGroups) {
+            if (g.SpanID === span.SpanID) {
+              groupMap.set(g.EvalName, g);
+            }
+          }
+        }
+
+        const hasGroups = groupMap.size > 0;
+        const hasEvals = evals && evals.length > 0;
+
+        if (!hasGroups && !hasEvals) return null;
+
+        // If we have group data, render grouped view for all evals in groups,
+        // then fall back to flat evals for any not covered by groups.
+        const coveredEvalNames = new Set(groupMap.keys());
+        const ungroupedEvals = (evals ?? []).filter((e) => !coveredEvalNames.has(e.EvalName));
+
+        const totalCount = groupMap.size + ungroupedEvals.length;
+
+        return (
+          <div>
+            <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+              {totalCount === 1 ? "Quality Score" : "Quality Scores"}
+            </p>
+            <div className="flex flex-col gap-3">
+              {/* Multi-model grouped evals */}
+              {Array.from(groupMap.values()).map((group) => {
+                if (group.Scores.length < 2) {
+                  // Single-score group — render as flat card
+                  const score = group.Scores[0];
+                  if (!score) return null;
+                  return (
+                    <div key={group.EvalName} className={`rounded-lg p-3 ${evalScoreClasses(score.Score)}`}>
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-sm font-mono tabular-nums ${evalScoreClasses(score.Score)}`}>
+                          <span>●</span>
+                          <span>{score.Score.toFixed(2)}</span>
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)] capitalize">{group.EvalName.replace(/_/g, " ")}</span>
+                      </div>
+                      {score.Reasoning && (
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed">{score.Reasoning}</p>
+                      )}
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        judge: <span className="font-mono text-[var(--text)]">{score.Model}</span>
+                      </p>
+                    </div>
+                  );
+                }
+
+                // Multi-model comparison table
+                const consensus = group.ConsensusScore;
+                return (
+                  <div key={group.EvalName} className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] overflow-hidden">
+                    {/* Header row */}
+                    <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
+                      <span className="text-xs font-medium text-[var(--text)] capitalize flex-1">
+                        {group.EvalName.replace(/_/g, " ")}
+                      </span>
+                      {consensus !== null && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono tabular-nums ${evalScoreClasses(consensus)}`}>
+                          <span>●</span>
+                          <span>{(consensus * 100).toFixed(0)}%</span>
+                        </span>
+                      )}
+                      {group.Disagreement && (
+                        <span className="text-amber-400 text-sm" title="Models disagree on this score">&#9888;</span>
+                      )}
+                    </div>
+                    {/* Per-model rows */}
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {group.Scores.map((ms) => (
+                          <tr key={ms.Model} className="border-t border-[var(--border)] first:border-0">
+                            <td className="px-3 py-2 font-mono text-[var(--text-muted)] w-2/5 truncate">{ms.Model}</td>
+                            <td className="px-2 py-2 w-16">
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono tabular-nums ${evalScoreClasses(ms.Score)}`}>
+                                <span>●</span>
+                                <span>{ms.Score.toFixed(2)}</span>
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-[var(--text-muted)] leading-relaxed">
+                              {ms.Reasoning
+                                ? ms.Reasoning.length > 100
+                                  ? `${ms.Reasoning.slice(0, 100)}…`
+                                  : ms.Reasoning
+                                : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+
+              {/* Flat fallback for evals not in any group */}
+              {ungroupedEvals.map((spanEval) => (
+                <div key={spanEval.EvalName} className={`rounded-lg p-3 ${evalScoreClasses(spanEval.Score)}`}>
+                  <div className="flex items-center gap-3 mb-1.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-sm font-mono tabular-nums ${evalScoreClasses(spanEval.Score)}`}>
+                      <span>●</span>
+                      <span>{spanEval.Score.toFixed(2)}</span>
+                    </span>
+                    <span className="text-xs text-[var(--text-muted)] capitalize">{spanEval.EvalName.replace(/_/g, " ")}</span>
+                  </div>
+                  {spanEval.Reasoning && (
+                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">{spanEval.Reasoning}</p>
+                  )}
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    judge: <span className="font-mono text-[var(--text)]">{spanEval.JudgeModel}</span>
+                  </p>
                 </div>
-                {spanEval.Reasoning && (
-                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">{spanEval.Reasoning}</p>
-                )}
-                <p className="text-xs text-[var(--text-muted)] mt-1">
-                  judge: <span className="font-mono text-[var(--text)]">{spanEval.JudgeModel}</span>
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+        );
+      })()}
+
+      {/* Human Feedback */}
+      <div>
+        <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">Human Feedback</p>
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleRate("good")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+              localFeedback?.Rating === "good"
+                ? "bg-green-700 text-white"
+                : "bg-zinc-800 text-[var(--text-muted)] hover:bg-zinc-700"
+            }`}
+          >
+            <span>&#128077;</span> Good
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => handleRate("bad")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ${
+              localFeedback?.Rating === "bad"
+                ? "bg-red-700 text-white"
+                : "bg-zinc-800 text-[var(--text-muted)] hover:bg-zinc-700"
+            }`}
+          >
+            <span>&#128078;</span> Bad
+          </button>
+          {localFeedback && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleRemove}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] underline ml-1 disabled:opacity-50"
+            >
+              Remove feedback
+            </button>
+          )}
         </div>
-      )}
+        {localFeedback?.Rating === "bad" && (
+          <textarea
+            value={correctedOutput}
+            onChange={(e) => setCorrectedOutput(e.target.value)}
+            placeholder="Optional: enter corrected output..."
+            rows={3}
+            className="w-full text-xs font-mono bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-[var(--text)] placeholder:text-[var(--text-muted)] resize-y focus:outline-none focus:border-zinc-500"
+          />
+        )}
+      </div>
 
       {/* Cost & Tokens (LLM only) */}
       {span.AgentSpanKind === "llm.call" && (span.TotalTokens > 0 || span.CostUSD > 0) && (

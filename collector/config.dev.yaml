@@ -14,12 +14,21 @@ receivers:
         endpoint: "0.0.0.0:4318"
 
 processors:
+  # Generous limits in dev to avoid throttling local runs
+  ratelimitproc:
+    rate_per_second: 1000
+    burst_size: 2000
+    stale_after: 5m
   batch:
     send_batch_size: 512
     timeout: 2s
   agentsemanticproc:
     attributes_config: ../config/agent_attributes.yaml
     pricing_config: ../config/model_pricing.yaml
+  piimaskerproc:
+    postgres_dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
+    settings_refresh_interval: 3s
+    max_pool_conns: 2
   budgetenforceproc:
     postgres_dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
     rule_refresh_interval: 3s
@@ -43,7 +52,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [batch, agentsemanticproc, budgetenforceproc]
+      processors: [ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
     traces/debug:
       receivers:  [otlp]

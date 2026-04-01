@@ -71,6 +71,44 @@ var sampleConversations = [][2]string{
 	},
 }
 
+// piiSupportConversations contains realistic-looking but entirely fake PII for
+// demonstrating the PII redaction feature. These are used by scenarioSupportTriagePII
+// so that the customer-support-bot project has visible [REDACTED:xxx] tokens in its
+// span attributes when PII redaction is enabled in the Settings tab.
+//
+// All data is synthetic: names, emails, card numbers, and API keys are fabricated.
+var piiSupportConversations = [][2]string{
+	{
+		"Customer alice.morgan@example.com (account #ACC-847291) is disputing a charge of $149.99 on card 4111 1111 1111 1111. Billing address: 123 Main St, Springfield IL 62701. Please process the refund and send confirmation to her email.",
+		"I've located account #ACC-847291 for alice.morgan@example.com. The disputed charge of $149.99 on the Visa card ending in 1111 has been flagged for review. A full refund will be credited within 3-5 business days and a confirmation will be sent to alice.morgan@example.com.",
+	},
+	{
+		"User bob.chen@acme-corp.com is reporting an API integration issue. He shared his key sk-ant-api03-FAKEKEYDEMOONLY1234567890ABCDEFGHIJKLMNOPQRST for debugging. His phone is (555) 867-5309. Can you verify the credentials?",
+		"I see the support ticket from bob.chen@acme-corp.com. Important: the customer should not share API credentials over support channels — the key beginning with sk-ant- must be rotated immediately. I've flagged this as a security education case and will contact bob.chen@acme-corp.com to guide them through key rotation.",
+	},
+	{
+		"Please locate the order for customer SSN 123-45-6789, email carol.james@gmail.com, phone (408) 555-0192. She used card 5500 0000 0000 0004 for a purchase last Tuesday and is requesting an expedited shipping upgrade.",
+		"Order located for carol.james@gmail.com. Note: SSNs are not required for order lookups — I've flagged this intake form for a privacy review. I've processed the shipping upgrade using the order ID derived from the email address only. Carol will receive a tracking update at carol.james@gmail.com within 1 hour.",
+	},
+}
+
+// withLLMPII is like withLLM but picks from piiSupportConversations so the resulting
+// span attributes contain PII that the piimaskerproc processor will redact when
+// PII redaction is enabled for the project.
+func withLLMPII(model, system string, inputTokens, outputTokens int) []attribute.KeyValue {
+	conv := piiSupportConversations[rand.Intn(len(piiSupportConversations))]
+	return []attribute.KeyValue{
+		attribute.String("agentpulse.span.kind", "llm.call"),
+		attribute.String("gen_ai.operation.name", "chat"),
+		attribute.String("gen_ai.system", system),
+		attribute.String("gen_ai.request.model", model),
+		attribute.Int("gen_ai.usage.input_tokens", inputTokens),
+		attribute.Int("gen_ai.usage.output_tokens", outputTokens),
+		attribute.String("gen_ai.prompt", conv[0]),
+		attribute.String("gen_ai.completion", conv[1]),
+	}
+}
+
 func randTokens(minInput, maxInput, minOutput, maxOutput int) (int, int) {
 	input := minInput + rand.Intn(maxInput-minInput)
 	output := minOutput + rand.Intn(maxOutput-minOutput)
@@ -233,6 +271,68 @@ func scenarioSupportTriage(ctx context.Context, tracer trace.Tracer, projectID, 
 		combine(baseAttrs(projectID, runID, "triage-agent"), user,
 			withLLM("claude-sonnet-4-6", "anthropic", in, out))...,
 	)(jitterD(250*time.Millisecond))
+
+	root.SetStatus(codes.Ok, "")
+	root.End()
+	return nil
+}
+
+// ── Scenario: support-triage-pii ─────────────────────────────────────────────
+//
+// Identical topology to support-triage but LLM calls use piiSupportConversations
+// which contain fake emails, credit card numbers, and API keys. When PII
+// redaction is enabled on the project (via the Settings tab), these attributes
+// will be stored as [REDACTED:email], [REDACTED:credit_card], etc. in ClickHouse
+// and displayed accordingly in the span detail drawer.
+
+func scenarioSupportTriagePII(ctx context.Context, tracer trace.Tracer, projectID, userID string) error {
+	runID := fmt.Sprintf("run-%d", time.Now().UnixMilli())
+	user := optUserAttrs(userID)
+
+	rootCtx, root := tracer.Start(ctx, "triage-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), user,
+			withLLMPII("claude-haiku-4-5", "anthropic", rv(200, 600), rv(50, 150)),
+		)...),
+	)
+
+	span(tracer, rootCtx, "tool/fetch_customer_profile",
+		combine(baseAttrs(projectID, runID, "triage-agent"), user, withTool("fetch_customer_profile"))...,
+	)(jitterD(30 * time.Millisecond))
+
+	spanLLM(tracer, rootCtx, "triage-agent/classify",
+		combine(baseAttrs(projectID, runID, "triage-agent"), user,
+			withLLMPII("claude-haiku-4-5", "anthropic", rv(400, 800), rv(80, 160)))...,
+	)(jitterD(120 * time.Millisecond))
+
+	kbCtx, kbHandoff := tracer.Start(rootCtx, "handoff/kb-agent",
+		trace.WithAttributes(combine(
+			baseAttrs(projectID, runID, "triage-agent"), user,
+			withHandoff("triage-agent", "kb-agent"),
+		)...),
+	)
+
+	span(tracer, kbCtx, "tool/search_knowledge_base",
+		combine(baseAttrs(projectID, runID, "kb-agent"), user,
+			withToolIO("search_knowledge_base",
+				`{"query": "billing dispute refund policy", "index": "support-kb-v2"}`,
+				`{"status": "ok", "results": [{"id": "kb-482", "title": "Refund Policy", "snippet": "Refunds are processed within 3-5 business days to the original payment method."}]}`,
+			))...,
+	)(jitterD(80 * time.Millisecond))
+
+	in, out := randTokens(600, 1800, 200, 600)
+	spanLLM(tracer, kbCtx, "kb-agent/draft-response",
+		combine(baseAttrs(projectID, runID, "kb-agent"), user,
+			withLLMPII("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(300 * time.Millisecond))
+
+	kbHandoff.End()
+
+	in, out = randTokens(500, 1200, 150, 400)
+	spanLLM(tracer, rootCtx, "triage-agent/compose-reply",
+		combine(baseAttrs(projectID, runID, "triage-agent"), user,
+			withLLMPII("claude-sonnet-4-6", "anthropic", in, out))...,
+	)(jitterD(250 * time.Millisecond))
 
 	root.SetStatus(codes.Ok, "")
 	root.End()

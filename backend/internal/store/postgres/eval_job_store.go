@@ -16,16 +16,22 @@ func NewEvalJobStore(pool *pgxpool.Pool) *EvalJobStore {
 	return &EvalJobStore{pool: pool}
 }
 
+const defaultEvalJobJudgeModel = "claude-haiku-4-5"
+
 func (s *EvalJobStore) Enqueue(ctx context.Context, jobs []*domain.EvalJob) error {
 	if len(jobs) == 0 {
 		return nil
 	}
 	for _, j := range jobs {
+		model := j.JudgeModel
+		if model == "" {
+			model = defaultEvalJobJudgeModel
+		}
 		_, err := s.pool.Exec(ctx, `
-			INSERT INTO eval_jobs (span_id, run_id, project_id, eval_name)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (span_id, eval_name) DO NOTHING`,
-			j.SpanID, j.RunID, j.ProjectID, j.EvalName,
+			INSERT INTO eval_jobs (span_id, run_id, project_id, eval_name, judge_model)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (span_id, eval_name, judge_model) DO NOTHING`,
+			j.SpanID, j.RunID, j.ProjectID, j.EvalName, model,
 		)
 		if err != nil {
 			return fmt.Errorf("eval_job_store enqueue: %w", err)
@@ -45,7 +51,7 @@ func (s *EvalJobStore) Claim(ctx context.Context, n int) ([]*domain.EvalJob, err
 			LIMIT $1
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, span_id, run_id, project_id, eval_name`,
+		RETURNING id, span_id, run_id, project_id, eval_name, judge_model`,
 		n,
 	)
 	if err != nil {
@@ -56,7 +62,7 @@ func (s *EvalJobStore) Claim(ctx context.Context, n int) ([]*domain.EvalJob, err
 	var jobs []*domain.EvalJob
 	for rows.Next() {
 		j := &domain.EvalJob{}
-		if err := rows.Scan(&j.ID, &j.SpanID, &j.RunID, &j.ProjectID, &j.EvalName); err != nil {
+		if err := rows.Scan(&j.ID, &j.SpanID, &j.RunID, &j.ProjectID, &j.EvalName, &j.JudgeModel); err != nil {
 			return nil, fmt.Errorf("eval_job_store scan: %w", err)
 		}
 		jobs = append(jobs, j)

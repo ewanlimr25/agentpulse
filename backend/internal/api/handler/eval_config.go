@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
+	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
@@ -23,12 +25,20 @@ var builtinEvalNames = map[string]bool{
 	"tool_correctness": true,
 }
 
+// EvalConfigHandler handles CRUD for per-project eval configurations.
+// providerKeys is used to validate that judge models are usable at request time.
 type EvalConfigHandler struct {
-	configs store.EvalConfigStore
+	configs      store.EvalConfigStore
+	providerKeys eval.ProviderKeys
 }
 
 func NewEvalConfigHandler(configs store.EvalConfigStore) *EvalConfigHandler {
 	return &EvalConfigHandler{configs: configs}
+}
+
+// NewEvalConfigHandlerWithKeys creates the handler with provider keys for model validation.
+func NewEvalConfigHandlerWithKeys(configs store.EvalConfigStore, keys eval.ProviderKeys) *EvalConfigHandler {
+	return &EvalConfigHandler{configs: configs, providerKeys: keys}
 }
 
 func (h *EvalConfigHandler) Routes(r chi.Router) {
@@ -53,6 +63,7 @@ type evalConfigRequest struct {
 	SpanKind       string              `json:"span_kind"`
 	PromptTemplate *string             `json:"prompt_template,omitempty"`
 	ScopeFilter    map[string][]string `json:"scope_filter,omitempty"`
+	JudgeModels    []string            `json:"judge_models,omitempty"`
 }
 
 func (req *evalConfigRequest) validate() string {
@@ -80,6 +91,37 @@ func (req *evalConfigRequest) validate() string {
 	return ""
 }
 
+// validateJudgeModels checks that every model in the list is in SupportedModels
+// and that the required provider key is configured. Returns a human-readable
+// error string, or "" if all models are valid.
+func (h *EvalConfigHandler) validateJudgeModels(models []string) string {
+	for _, model := range models {
+		provider, ok := eval.SupportedModels[model]
+		if !ok {
+			supported := make([]string, 0, len(eval.SupportedModels))
+			for k := range eval.SupportedModels {
+				supported = append(supported, k)
+			}
+			return fmt.Sprintf("unsupported judge model %q; supported models: %s", model, strings.Join(supported, ", "))
+		}
+		switch provider {
+		case "anthropic":
+			if h.providerKeys.Anthropic == "" {
+				return fmt.Sprintf("judge model %q requires ANTHROPIC_API_KEY which is not configured", model)
+			}
+		case "openai":
+			if h.providerKeys.OpenAI == "" {
+				return fmt.Sprintf("judge model %q requires OPENAI_API_KEY which is not configured", model)
+			}
+		case "google":
+			if h.providerKeys.Google == "" {
+				return fmt.Sprintf("judge model %q requires GOOGLE_AI_API_KEY which is not configured", model)
+			}
+		}
+	}
+	return ""
+}
+
 func (h *EvalConfigHandler) upsert(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 
@@ -93,6 +135,14 @@ func (h *EvalConfigHandler) upsert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate judge_models if provided.
+	if len(req.JudgeModels) > 0 {
+		if msg := h.validateJudgeModels(req.JudgeModels); msg != "" {
+			httputil.Error(w, http.StatusUnprocessableEntity, msg)
+			return
+		}
+	}
+
 	cfg := &domain.EvalConfig{
 		ID:             uuid.New().String(),
 		ProjectID:      projectID,
@@ -102,6 +152,7 @@ func (h *EvalConfigHandler) upsert(w http.ResponseWriter, r *http.Request) {
 		PromptTemplate: req.PromptTemplate,
 		PromptVersion:  1, // store auto-increments on template change via ON CONFLICT
 		ScopeFilter:    req.ScopeFilter,
+		JudgeModels:    req.JudgeModels,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

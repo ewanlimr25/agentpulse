@@ -351,6 +351,260 @@ func TestBaselineByProject_ProjectIsolation(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestListByRunGrouped — integration tests for the Go-level grouping logic
+//
+// These tests require a live ClickHouse instance (same guard as Baseline tests).
+// They verify that ListByRunGrouped correctly groups rows by (span_id, eval_name),
+// computes ConsensusScore, and sets Disagreement when max-min > 0.2.
+// ---------------------------------------------------------------------------
+
+// TestListByRunGrouped_SingleModel verifies that a single-model eval group has
+// ConsensusScore == that model's score and Disagreement == false.
+func TestListByRunGrouped_SingleModel(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	projectID := "proj-grouped-single"
+	runID := "run-grouped-single"
+	now := time.Now().UTC()
+
+	insertSpanEval(t, conn, &domain.SpanEval{
+		ProjectID:  projectID,
+		RunID:      runID,
+		SpanID:     "span-a",
+		EvalName:   "relevance",
+		Score:      0.90,
+		Reasoning:  "looks good",
+		JudgeModel: "claude-haiku-4-5",
+		EvalVersion: 1,
+		CreatedAt:  now,
+	})
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(groups))
+	}
+	g := groups[0]
+	if g.SpanID != "span-a" {
+		t.Errorf("expected span_id 'span-a', got %q", g.SpanID)
+	}
+	if g.EvalName != "relevance" {
+		t.Errorf("expected eval_name 'relevance', got %q", g.EvalName)
+	}
+	if len(g.Scores) != 1 {
+		t.Errorf("expected 1 model score, got %d", len(g.Scores))
+	}
+	if g.ConsensusScore == nil {
+		t.Fatal("expected ConsensusScore to be set for single-model group")
+	}
+	if absDiff(float64(*g.ConsensusScore), 0.90) > 0.01 {
+		t.Errorf("expected consensus ~0.90, got %.4f", *g.ConsensusScore)
+	}
+	if g.Disagreement {
+		t.Error("expected Disagreement=false for single-model group")
+	}
+}
+
+// TestListByRunGrouped_TwoModelsAgreement verifies that two models with scores
+// 0.80 and 0.75 (diff=0.05) produce Disagreement=false and consensus=(0.80+0.75)/2.
+func TestListByRunGrouped_TwoModelsAgreement(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	projectID := "proj-grouped-agree"
+	runID := "run-grouped-agree"
+	now := time.Now().UTC()
+
+	for _, e := range []*domain.SpanEval{
+		{ProjectID: projectID, RunID: runID, SpanID: "span-b", EvalName: "hallucination",
+			Score: 0.80, JudgeModel: "claude-haiku-4-5", EvalVersion: 1, CreatedAt: now},
+		{ProjectID: projectID, RunID: runID, SpanID: "span-b", EvalName: "hallucination",
+			Score: 0.75, JudgeModel: "gpt-4o-mini", EvalVersion: 1, CreatedAt: now},
+	} {
+		insertSpanEval(t, conn, e)
+	}
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(groups))
+	}
+	g := groups[0]
+	if len(g.Scores) != 2 {
+		t.Errorf("expected 2 model scores, got %d", len(g.Scores))
+	}
+	if g.ConsensusScore == nil {
+		t.Fatal("expected ConsensusScore to be set")
+	}
+	// (0.80 + 0.75) / 2 = 0.775
+	if absDiff(float64(*g.ConsensusScore), 0.775) > 0.01 {
+		t.Errorf("expected consensus ~0.775, got %.4f", *g.ConsensusScore)
+	}
+	if g.Disagreement {
+		t.Errorf("expected Disagreement=false when max-min=0.05, got true")
+	}
+}
+
+// TestListByRunGrouped_TwoModelsDisagreement verifies that two models with
+// scores 0.90 and 0.50 (diff=0.40 > 0.20 threshold) produce Disagreement=true.
+func TestListByRunGrouped_TwoModelsDisagreement(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	projectID := "proj-grouped-disagree"
+	runID := "run-grouped-disagree"
+	now := time.Now().UTC()
+
+	for _, e := range []*domain.SpanEval{
+		{ProjectID: projectID, RunID: runID, SpanID: "span-c", EvalName: "toxicity",
+			Score: 0.90, JudgeModel: "claude-haiku-4-5", EvalVersion: 1, CreatedAt: now},
+		{ProjectID: projectID, RunID: runID, SpanID: "span-c", EvalName: "toxicity",
+			Score: 0.50, JudgeModel: "gpt-4o-mini", EvalVersion: 1, CreatedAt: now},
+	} {
+		insertSpanEval(t, conn, e)
+	}
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected 1 group, got %d", len(groups))
+	}
+	g := groups[0]
+	if !g.Disagreement {
+		t.Error("expected Disagreement=true when max-min=0.40 > 0.20")
+	}
+	if g.ConsensusScore == nil {
+		t.Fatal("expected ConsensusScore to be set")
+	}
+	// (0.90 + 0.50) / 2 = 0.70
+	if absDiff(float64(*g.ConsensusScore), 0.70) > 0.01 {
+		t.Errorf("expected consensus ~0.70, got %.4f", *g.ConsensusScore)
+	}
+}
+
+// TestListByRunGrouped_MultipleSpansMultipleEvalNames verifies that rows for
+// distinct (span_id, eval_name) pairs are each placed in their own group.
+func TestListByRunGrouped_MultipleGroups(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	projectID := "proj-grouped-multi"
+	runID := "run-grouped-multi"
+	now := time.Now().UTC()
+
+	evals := []*domain.SpanEval{
+		// span-d / relevance
+		{ProjectID: projectID, RunID: runID, SpanID: "span-d", EvalName: "relevance",
+			Score: 0.80, JudgeModel: "claude-haiku-4-5", EvalVersion: 1, CreatedAt: now},
+		// span-d / hallucination
+		{ProjectID: projectID, RunID: runID, SpanID: "span-d", EvalName: "hallucination",
+			Score: 0.60, JudgeModel: "claude-haiku-4-5", EvalVersion: 1, CreatedAt: now},
+		// span-e / relevance
+		{ProjectID: projectID, RunID: runID, SpanID: "span-e", EvalName: "relevance",
+			Score: 0.70, JudgeModel: "claude-haiku-4-5", EvalVersion: 1, CreatedAt: now},
+	}
+	for _, e := range evals {
+		insertSpanEval(t, conn, e)
+	}
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(groups) != 3 {
+		t.Fatalf("expected 3 groups (2 spans × different eval names), got %d", len(groups))
+	}
+	for _, g := range groups {
+		if g.ConsensusScore == nil {
+			t.Errorf("group (%s/%s): expected ConsensusScore to be set", g.SpanID, g.EvalName)
+		}
+		if g.Disagreement {
+			t.Errorf("group (%s/%s): expected Disagreement=false for single-model groups", g.SpanID, g.EvalName)
+		}
+	}
+}
+
+// TestListByRunGrouped_RunIsolation verifies that evals from a different run
+// are not included in the result.
+func TestListByRunGrouped_RunIsolation(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	projectID := "proj-grouped-iso"
+	targetRun := "run-target"
+	otherRun := "run-other"
+	now := time.Now().UTC()
+
+	insertSpanEval(t, conn, &domain.SpanEval{
+		ProjectID: projectID, RunID: targetRun, SpanID: "span-target",
+		EvalName: "relevance", Score: 0.85, JudgeModel: "claude-haiku-4-5",
+		EvalVersion: 1, CreatedAt: now,
+	})
+	insertSpanEval(t, conn, &domain.SpanEval{
+		ProjectID: projectID, RunID: otherRun, SpanID: "span-other",
+		EvalName: "relevance", Score: 0.10, JudgeModel: "claude-haiku-4-5",
+		EvalVersion: 1, CreatedAt: now,
+	})
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), targetRun)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected only 1 group for targetRun, got %d", len(groups))
+	}
+	if groups[0].SpanID != "span-target" {
+		t.Errorf("expected span-target, got %q", groups[0].SpanID)
+	}
+	if absDiff(float64(*groups[0].ConsensusScore), 0.85) > 0.01 {
+		t.Errorf("expected score ~0.85 (not contaminated by other run), got %.4f", *groups[0].ConsensusScore)
+	}
+}
+
+// TestListByRunGrouped_EmptyRun verifies that a run with no span_evals rows
+// returns an empty (non-nil) slice.
+func TestListByRunGrouped_EmptyRun(t *testing.T) {
+	conn := openTestConn(t)
+	defer conn.Close()
+	setupTestSchema(t, conn)
+	t.Cleanup(func() { truncateTables(t, conn) })
+
+	store := NewEvalStore(conn)
+	groups, err := store.ListByRunGrouped(context.Background(), "run-does-not-exist")
+	if err != nil {
+		t.Fatalf("expected no error for empty run, got: %v", err)
+	}
+	if groups == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(groups) != 0 {
+		t.Errorf("expected 0 groups for unknown run, got %d", len(groups))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, SearchResponse } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -31,8 +31,11 @@ async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
   const projectId = init?.projectId ?? extractProjectId(path);
   const apiKey = projectId ? getApiKey(projectId) : null;
 
-  const { projectId: _, ...fetchInit } = init ?? {};
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const { projectId: _, headers: extraHeaders, ...fetchInit } = init ?? {};
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(extraHeaders as Record<string, string> | undefined),
+  };
   if (apiKey) {
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
@@ -57,7 +60,7 @@ export const projectsApi = {
   list: () => apiFetch<Project[]>("/api/v1/projects"),
   get: (id: string) => apiFetch<Project>(`/api/v1/projects/${id}`),
   create: (name: string) =>
-    apiFetch<{ project: Project; api_key: string }>("/api/v1/projects", {
+    apiFetch<{ project: Project; api_key: string; admin_key?: string }>("/api/v1/projects", {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
@@ -87,11 +90,13 @@ export const runsApi = {
 export const evalsApi = {
   listByRun: (runId: string, projectId: string) =>
     apiFetch<SpanEval[]>(`/api/v1/runs/${runId}/evals`, { projectId }),
+  listByRunGrouped: (runId: string, projectId: string) =>
+    apiFetch<SpanEvalGroup[]>(`/api/v1/runs/${runId}/evals/grouped`, { projectId }),
   summaryByProject: (projectId: string) =>
     apiFetch<RunEvalSummary[]>(`/api/v1/projects/${projectId}/evals/summary`),
   listConfigs: (projectId: string) =>
     apiFetch<EvalConfig[]>(`/api/v1/projects/${projectId}/evals/config`),
-  upsertConfig: (projectId: string, cfg: { eval_name: string; enabled: boolean; span_kind: string; prompt_template?: string; scope_filter?: Record<string, string[]> }) =>
+  upsertConfig: (projectId: string, cfg: { eval_name: string; enabled: boolean; span_kind: string; prompt_template?: string; scope_filter?: Record<string, string[]>; judge_models?: string[] }) =>
     apiFetch<EvalConfig>(`/api/v1/projects/${projectId}/evals/config`, {
       method: "POST",
       body: JSON.stringify(cfg),
@@ -215,6 +220,42 @@ export const usersApi = {
     apiFetch<UsersListResponse>(
       `/api/v1/projects/${projectId}/users?limit=${limit}&offset=${offset}`
     ),
+};
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+export const settingsApi = {
+  get: (projectId: string) =>
+    apiFetch<ProjectPIIConfig>(`/api/v1/projects/${projectId}/settings`),
+
+  update: (
+    projectId: string,
+    body: { pii_redaction_enabled: boolean; pii_custom_rules: PIICustomRule[] },
+    adminKey: string
+  ) =>
+    apiFetch<ProjectPIIConfig>(`/api/v1/projects/${projectId}/settings`, {
+      method: "PUT",
+      headers: { "X-Admin-Key": adminKey },
+      body: JSON.stringify(body),
+    }),
+};
+
+// ── Span Feedback (Human-in-the-Loop Evals) ──────────────────────────────────
+
+export const spanFeedbackApi = {
+  upsert: (projectId: string, spanId: string, req: FeedbackRequest) =>
+    apiFetch<SpanFeedback>(`/api/v1/projects/${projectId}/spans/${spanId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(req),
+    }),
+  get: (projectId: string, spanId: string) =>
+    apiFetch<SpanFeedback>(`/api/v1/projects/${projectId}/spans/${spanId}/feedback`),
+  delete: (projectId: string, spanId: string) =>
+    apiFetch<void>(`/api/v1/projects/${projectId}/spans/${spanId}/feedback`, {
+      method: "DELETE",
+    }),
+  listByRun: (projectId: string, runId: string) =>
+    apiFetch<SpanFeedback[]>(`/api/v1/projects/${projectId}/runs/${runId}/feedback`),
 };
 
 // ── Search ─────────────────────────────────────────────────────────────────────

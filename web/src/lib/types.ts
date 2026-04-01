@@ -229,8 +229,23 @@ export interface EvalConfig {
   PromptTemplate?: string;    // undefined = built-in; present = custom
   PromptVersion: number;
   ScopeFilter?: Record<string, string[]>; // e.g. { agent_name: ["researcher"] }; absent = all agents
+  JudgeModels?: string[];     // e.g. ["claude-haiku-4-5", "gpt-4o-mini"]; absent = default single model
   CreatedAt: string;
   UpdatedAt: string;
+}
+
+export interface ModelScore {
+  Model: string;
+  Score: number;
+  Reasoning: string;
+}
+
+export interface SpanEvalGroup {
+  SpanID: string;
+  EvalName: string;
+  Scores: ModelScore[];
+  ConsensusScore: number | null;  // null if not all models scored
+  Disagreement: boolean;
 }
 
 export const BUILTIN_EVAL_NAMES = ["relevance", "hallucination", "faithfulness", "toxicity", "tool_correctness"] as const;
@@ -333,6 +348,22 @@ export interface SearchResponse {
   query: string;
 }
 
+// ── PII / Settings ────────────────────────────────────────────────────────────
+
+export interface PIICustomRule {
+  name: string;
+  pattern: string;
+  enabled: boolean;
+}
+
+export interface ProjectPIIConfig {
+  project_id: string;
+  pii_redaction_enabled: boolean;
+  pii_custom_rules: PIICustomRule[];
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 export type AnalyticsWindow = "24h" | "7d";
@@ -353,4 +384,23 @@ export interface AgentCostStats {
   CostPercent: number;    // 0–100, share of project total
   CallCount: number;
   AvgCostPerCall: number;
+}
+
+// ── Human-in-the-Loop Eval Feedback ──────────────────────────────────────────
+
+export interface SpanFeedback {
+  ID: string;
+  ProjectID: string;
+  SpanID: string;
+  RunID: string;
+  Rating: "good" | "bad";
+  CorrectedOutput: string | null;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export interface FeedbackRequest {
+  run_id: string;
+  rating: "good" | "bad";
+  corrected_output?: string;
 }

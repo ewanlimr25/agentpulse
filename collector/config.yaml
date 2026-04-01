@@ -19,17 +19,29 @@ receivers:
         endpoint: "0.0.0.0:4318"   # HTTP/protobuf — for browser/HTTP clients
 
 processors:
-  # 1. Batch spans before processing (reduces DB round-trips)
+  # 1. Rate-limit ingestion per project (must be first — before batch buffers memory)
+  ratelimitproc:
+    rate_per_second: 100
+    burst_size: 200
+    stale_after: 5m
+
+  # 2. Batch spans before processing (reduces DB round-trips)
   batch:
     send_batch_size: 512
     timeout: 2s
 
-  # 2. Classify spans and compute cost
+  # 3. Classify spans and compute cost
   agentsemanticproc:
     attributes_config: /etc/agentpulse/agent_attributes.yaml
     pricing_config: /etc/agentpulse/model_pricing.yaml
 
-  # 3. Enforce budget rules and fire alerts
+  # 4. Redact PII and secrets from span attributes (opt-in per project)
+  piimaskerproc:
+    postgres_dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
+    settings_refresh_interval: 30s
+    max_pool_conns: 2
+
+  # 5. Enforce budget rules and fire alerts
   budgetenforceproc:
     postgres_dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
     rule_refresh_interval: 30s
@@ -59,7 +71,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [batch, agentsemanticproc, budgetenforceproc]
+      processors: [ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
 
     # Separate debug pipeline — disable by removing this block in production

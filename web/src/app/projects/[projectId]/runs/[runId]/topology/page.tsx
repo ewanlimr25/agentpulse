@@ -74,6 +74,8 @@ export default function TopologyPage({
         span={selectedSpan}
         runStartTime={run?.StartTime ?? ""}
         onClose={() => setSelectedSpanId(null)}
+        projectId={projectId}
+        runId={runId}
       />
     </div>
   );

@@ -77,6 +77,9 @@ func (m *mockProjectStoreForAlerts) GetByAPIKeyHash(_ context.Context, hash stri
 	}
 	return p, nil
 }
+func (m *mockProjectStoreForAlerts) GetByAdminKeyHash(_ context.Context, _ string) (*domain.Project, error) {
+	return nil, fmt.Errorf("not found")
+}
 
 func alertProjectStore(projectID, token string) *mockProjectStoreForAlerts {
 	return &mockProjectStoreForAlerts{

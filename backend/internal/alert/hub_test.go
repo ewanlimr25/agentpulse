@@ -35,6 +35,9 @@ func (m *mockProjectStore) GetByAPIKeyHash(_ context.Context, hash string) (*dom
 	}
 	return p, nil
 }
+func (m *mockProjectStore) GetByAdminKeyHash(_ context.Context, _ string) (*domain.Project, error) {
+	return nil, fmt.Errorf("not found")
+}
 
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))

@@ -3,16 +3,50 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config holds all runtime configuration for the backend API.
 // Values are read from environment variables.
 type Config struct {
-	HTTP             HTTPConfig
-	Postgres         PostgresConfig
-	ClickHouse       ClickHouseConfig
-	S3               S3Config
-	AnthropicAPIKey  string
+	HTTP            HTTPConfig
+	Postgres        PostgresConfig
+	ClickHouse      ClickHouseConfig
+	S3              S3Config
+	AnthropicAPIKey string
+	OpenAIAPIKey    string
+	GoogleAIAPIKey  string
+	CORS            CORSConfig
+}
+
+// String returns a human-readable representation of Config with all API key fields
+// redacted so that the struct is safe to pass to loggers.
+func (c *Config) String() string {
+	redact := func(s string) string {
+		if s == "" {
+			return "<unset>"
+		}
+		return "<redacted>"
+	}
+	return fmt.Sprintf(
+		"Config{HTTP:%+v Postgres:{DSN:<redacted>} ClickHouse:{Addr:%s Database:%s User:%s Password:<redacted>} "+
+			"S3:{Endpoint:%s Bucket:%s AccessKey:<redacted> SecretKey:<redacted>} "+
+			"AnthropicAPIKey:%s OpenAIAPIKey:%s GoogleAIAPIKey:%s CORS:%+v}",
+		c.HTTP,
+		c.ClickHouse.Addr, c.ClickHouse.Database, c.ClickHouse.User,
+		c.S3.Endpoint, c.S3.Bucket,
+		redact(c.AnthropicAPIKey), redact(c.OpenAIAPIKey), redact(c.GoogleAIAPIKey),
+		c.CORS,
+	)
+}
+
+// CORSConfig controls which origins are permitted to make cross-origin requests.
+type CORSConfig struct {
+	// AllowedOrigins is the explicit list of permitted origins.
+	// When empty and DevMode is true the server sends Access-Control-Allow-Origin: *.
+	AllowedOrigins []string
+	// DevMode is true when APP_ENV is "" or "development".
+	DevMode bool
 }
 
 type HTTPConfig struct {
@@ -62,6 +96,9 @@ func Load() (*Config, error) {
 			SecretKey: getEnv("S3_SECRET_KEY", "agentpulse"),
 		},
 		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
+		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
+		GoogleAIAPIKey:  getEnv("GOOGLE_AI_API_KEY", ""),
+		CORS:            loadCORSConfig(),
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -80,6 +117,25 @@ func (c *Config) validate() error {
 
 func (c *Config) HTTPAddr() string {
 	return c.HTTP.Host + ":" + c.HTTP.Port
+}
+
+func loadCORSConfig() CORSConfig {
+	appEnv := os.Getenv("APP_ENV")
+	devMode := appEnv == "" || appEnv == "development"
+
+	var allowedOrigins []string
+	if raw := os.Getenv("CORS_ALLOWED_ORIGINS"); raw != "" {
+		for _, origin := range strings.Split(raw, ",") {
+			if trimmed := strings.TrimSpace(origin); trimmed != "" {
+				allowedOrigins = append(allowedOrigins, trimmed)
+			}
+		}
+	}
+
+	return CORSConfig{
+		AllowedOrigins: allowedOrigins,
+		DevMode:        devMode,
+	}
 }
 
 func getEnv(key, fallback string) string {

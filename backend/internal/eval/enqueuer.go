@@ -14,7 +14,8 @@ const enqueueInterval = 30 * time.Second
 
 // Enqueuer polls ClickHouse for unprocessed spans and inserts eval_jobs for them.
 // Which eval types to run per project is driven by project_eval_configs.
-// ON CONFLICT DO NOTHING on (span_id, eval_name) handles duplicates.
+// Fan-out happens at enqueue time: one job is created per (span_id, eval_name, judge_model) tuple.
+// ON CONFLICT DO NOTHING on (span_id, eval_name, judge_model) handles duplicates.
 type Enqueuer struct {
 	chConn      driver.Conn
 	jobStore    store.EvalJobStore
@@ -39,10 +40,11 @@ func (e *Enqueuer) Run(ctx context.Context) {
 	}
 }
 
-// evalConfigRef bundles the eval name and scope filter for a single config.
+// evalConfigRef bundles the eval name, scope filter, and judge models for a single config.
 type evalConfigRef struct {
 	evalName    string
 	scopeFilter map[string][]string
+	judgeModels []string
 }
 
 // projectEvalMap groups enabled configs by project_id → span_kind → []evalConfigRef.
@@ -54,29 +56,58 @@ func buildEvalMap(configs []*domain.EvalConfig) projectEvalMap {
 		if m[cfg.ProjectID] == nil {
 			m[cfg.ProjectID] = make(map[string][]evalConfigRef)
 		}
+		models := cfg.JudgeModels
+		if len(models) == 0 {
+			models = []string{"claude-haiku-4-5"}
+		}
 		m[cfg.ProjectID][cfg.SpanKind] = append(m[cfg.ProjectID][cfg.SpanKind], evalConfigRef{
 			evalName:    cfg.EvalName,
 			scopeFilter: cfg.ScopeFilter,
+			judgeModels: models,
 		})
 	}
 	return m
 }
 
-// evalNamesForSpan returns the eval types to run for a given (projectID, spanKind, agentName).
+// evalJobsForSpan returns EvalJob stubs for a given (projectID, spanKind, agentName).
+// One job is created per (eval_name, judge_model) pair.
 // scope_filter is applied per config: a config with {"agent_name": ["x"]} only runs for agent x.
-// Falls back to ["relevance"] for llm.call spans on projects with no configs.
-func (m projectEvalMap) evalNamesForSpan(projectID, spanKind, agentName string) []string {
+// Falls back to a single relevance job with claude-haiku-4-5 for llm.call spans on projects with no configs.
+func (m projectEvalMap) evalJobsForSpan(projectID, spanKind, agentName string) []evalJobSpec {
 	byKind, ok := m[projectID]
 	if !ok || len(byKind[spanKind]) == 0 {
 		if spanKind == "llm.call" {
-			return []string{"relevance"} // default
+			return []evalJobSpec{{evalName: "relevance", judgeModel: "claude-haiku-4-5"}}
 		}
 		return nil
 	}
-	var names []string
+	var specs []evalJobSpec
 	for _, ref := range byKind[spanKind] {
 		if matchesScopeFilter(ref.scopeFilter, agentName) {
-			names = append(names, ref.evalName)
+			for _, model := range ref.judgeModels {
+				specs = append(specs, evalJobSpec{evalName: ref.evalName, judgeModel: model})
+			}
+		}
+	}
+	return specs
+}
+
+// evalJobSpec is a minimal descriptor for one (eval_name, judge_model) pair.
+type evalJobSpec struct {
+	evalName   string
+	judgeModel string
+}
+
+// evalNamesForSpan returns the eval names for a given (projectID, spanKind, agentName).
+// It is the name-only projection of evalJobsForSpan, kept for backward compatibility.
+func (m projectEvalMap) evalNamesForSpan(projectID, spanKind, agentName string) []string {
+	specs := m.evalJobsForSpan(projectID, spanKind, agentName)
+	seen := make(map[string]struct{}, len(specs))
+	var names []string
+	for _, s := range specs {
+		if _, ok := seen[s.evalName]; !ok {
+			seen[s.evalName] = struct{}{}
+			names = append(names, s.evalName)
 		}
 	}
 	return names
@@ -159,12 +190,13 @@ func (e *Enqueuer) enqueue(ctx context.Context) {
 
 	// llm.call spans
 	for _, s := range e.querySpans(ctx, "llm.call") {
-		for _, evalName := range evalMap.evalNamesForSpan(s.ProjectID, "llm.call", s.AgentName) {
+		for _, spec := range evalMap.evalJobsForSpan(s.ProjectID, "llm.call", s.AgentName) {
 			jobs = append(jobs, &domain.EvalJob{
-				EvalName:  evalName,
-				SpanID:    s.SpanID,
-				RunID:     s.RunID,
-				ProjectID: s.ProjectID,
+				EvalName:   spec.evalName,
+				JudgeModel: spec.judgeModel,
+				SpanID:     s.SpanID,
+				RunID:      s.RunID,
+				ProjectID:  s.ProjectID,
 			})
 		}
 	}
@@ -172,12 +204,13 @@ func (e *Enqueuer) enqueue(ctx context.Context) {
 	// tool.call spans (only if any project has tool.call evals enabled)
 	if hasToolCallConfigs(configs) {
 		for _, s := range e.querySpans(ctx, "tool.call") {
-			for _, evalName := range evalMap.evalNamesForSpan(s.ProjectID, "tool.call", s.AgentName) {
+			for _, spec := range evalMap.evalJobsForSpan(s.ProjectID, "tool.call", s.AgentName) {
 				jobs = append(jobs, &domain.EvalJob{
-					EvalName:  evalName,
-					SpanID:    s.SpanID,
-					RunID:     s.RunID,
-					ProjectID: s.ProjectID,
+					EvalName:   spec.evalName,
+					JudgeModel: spec.judgeModel,
+					SpanID:     s.SpanID,
+					RunID:      s.RunID,
+					ProjectID:  s.ProjectID,
 				})
 			}
 		}
