@@ -33,6 +33,7 @@ func NewRouter(
 	search store.SearchStore,
 	piiConfigs store.ProjectPIIConfigStore,
 	spanFeedback store.SpanFeedbackStore,
+	payloads store.PayloadStore,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
 	corsAllowedOrigins []string,
@@ -52,7 +53,7 @@ func NewRouter(
 	})
 
 	projectHandler := handler.NewProjectHandler(projects)
-	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals)
+	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals, payloads)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals, spanFeedback)
@@ -150,6 +151,7 @@ func NewRouter(
 			r.Use(middleware.RateLimit)
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
+			r.Get("/spans/{spanID}", runHandler.GetSpan)
 			r.Get("/evals", evalHandler.ListByRun)
 			r.Get("/evals/grouped", evalHandler.ListByRunGrouped)
 			r.Get("/loops", loopHandler.ListByRun)

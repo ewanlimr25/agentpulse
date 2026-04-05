@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Span, SpanEval, SpanEvalGroup, SpanFeedback } from "@/lib/types";
+import { runsApi } from "@/lib/api";
 import { SpanDetailContent } from "./SpanDetailContent";
 
 interface Props {
@@ -17,6 +19,28 @@ interface Props {
 }
 
 export function SpanDetailDrawer({ span, evals, evalGroups, runStartTime, onClose, projectId, runId, feedback, onFeedbackChange }: Props) {
+  const { data: resolvedSpan } = useQuery({
+    queryKey: ["span", runId, span?.SpanID],
+    queryFn: () => runsApi.fetchSpan(runId, span!.SpanID, projectId),
+    enabled: !!span && !!runId && !!projectId,
+    staleTime: Infinity,
+  });
+
+  const payloadKeys = ["gen_ai.prompt", "gen_ai.completion", "tool.input", "tool.output"] as const;
+  const displaySpan: Span | undefined = span
+    ? {
+        ...span,
+        Attributes: {
+          ...(span.Attributes ?? {}),
+          ...Object.fromEntries(
+            payloadKeys
+              .filter((k) => resolvedSpan?.Attributes?.[k] !== undefined)
+              .map((k) => [k, resolvedSpan!.Attributes![k]])
+          ),
+        },
+      }
+    : undefined;
+
   // Close on ESC
   useEffect(() => {
     if (!span) return;
@@ -58,7 +82,7 @@ export function SpanDetailDrawer({ span, evals, evalGroups, runStartTime, onClos
           </button>
         </div>
 
-        <SpanDetailContent span={span} evals={evals} evalGroups={evalGroups} runStartTime={runStartTime} projectId={projectId} runId={runId} feedback={feedback} onFeedbackChange={onFeedbackChange} />
+        <SpanDetailContent span={displaySpan!} evals={evals} evalGroups={evalGroups} runStartTime={runStartTime} projectId={projectId} runId={runId} feedback={feedback} onFeedbackChange={onFeedbackChange} isResolvingPayload={!resolvedSpan && !!span} />
       </div>
     </>
   );

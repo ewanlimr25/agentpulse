@@ -63,6 +63,7 @@ FROM spans
 WHERE project_id = ?
   AND agent_span_kind IN ('tool.call', 'llm.call')
   AND start_time >= ?
+  AND payload_s3_key = ''
   AND (attributes['gen_ai.prompt'] != '' OR attributes['tool.input'] != '')
 GROUP BY run_id, span_name, input_hash, output_hash
 HAVING cnt >= 2
@@ -87,6 +88,7 @@ FROM spans
 WHERE project_id = ?
   AND agent_span_kind IN ('tool.call', 'llm.call')
   AND start_time >= ?
+  AND payload_s3_key = ''
   AND (attributes['gen_ai.prompt'] != '' OR attributes['tool.input'] != '')
 GROUP BY run_id, span_name, input_hash
 HAVING cnt >= 4 AND avg_interval_ms < 3000

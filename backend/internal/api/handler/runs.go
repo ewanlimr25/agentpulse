@@ -1,15 +1,18 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/agentpulse/agentpulse/backend/internal/api/middleware"
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
+	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 )
 
 type RunHandler struct {
@@ -18,10 +21,11 @@ type RunHandler struct {
 	loops    store.LoopStore
 	topology store.TopologyStore
 	evals    store.EvalStore
+	payloads store.PayloadStore // nullable — nil means S3 disabled
 }
 
-func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore, topology store.TopologyStore, evals store.EvalStore) *RunHandler {
-	return &RunHandler{runs: runs, spans: spans, loops: loops, topology: topology, evals: evals}
+func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore, topology store.TopologyStore, evals store.EvalStore, payloads store.PayloadStore) *RunHandler {
+	return &RunHandler{runs: runs, spans: spans, loops: loops, topology: topology, evals: evals, payloads: payloads}
 }
 
 func (h *RunHandler) Routes(r chi.Router) {
@@ -202,6 +206,41 @@ func (h *RunHandler) Compare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.JSON(w, http.StatusOK, comparison)
+}
+
+// GetSpan returns a single span with payload fields resolved from S3 if offloaded.
+// Route: GET /runs/{runID}/spans/{spanID}
+func (h *RunHandler) GetSpan(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+	spanID := chi.URLParam(r, "spanID")
+
+	// Get authenticated project from context (set by RunAuth middleware).
+	project, ok := middleware.ProjectFromContext(r.Context())
+	if !ok {
+		httputil.Error(w, http.StatusUnauthorized, "missing authentication")
+		return
+	}
+
+	span, err := h.spans.GetByID(r.Context(), project.ID, spanID)
+	if err != nil {
+		if errors.Is(err, chstore.ErrSpanNotFound) {
+			httputil.Error(w, http.StatusNotFound, "span not found")
+			return
+		}
+		httputil.Error(w, http.StatusNotFound, "span not found")
+		return
+	}
+
+	// Verify span belongs to this run (IDOR check).
+	if span.RunID != runID {
+		httputil.Error(w, http.StatusNotFound, "span not found")
+		return
+	}
+
+	// Resolve S3 payloads (fail-open: no-op if payloads is nil or fetch fails).
+	chstore.ResolvePayloads(r.Context(), span, h.payloads)
+
+	httputil.JSON(w, http.StatusOK, span)
 }
 
 func intQueryParam(r *http.Request, key string, fallback int) int {

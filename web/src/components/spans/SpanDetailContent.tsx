@@ -16,6 +16,7 @@ interface Props {
   runId: string;
   feedback?: SpanFeedback | null;
   onFeedbackChange?: (feedback: SpanFeedback | null) => void;
+  isResolvingPayload?: boolean;
 }
 
 function evalScoreClasses(score: number): string {
@@ -77,7 +78,7 @@ function groupAttributes(attrs: Record<string, string>): [string, [string, strin
   return sorted;
 }
 
-export function SpanDetailContent({ span, evals, evalGroups, runStartTime, projectId, runId, feedback, onFeedbackChange }: Props) {
+export function SpanDetailContent({ span, evals, evalGroups, runStartTime, projectId, runId, feedback, onFeedbackChange, isResolvingPayload }: Props) {
   const [localFeedback, setLocalFeedback] = useState<SpanFeedback | null>(feedback ?? null);
   const [correctedOutput, setCorrectedOutput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -115,11 +116,28 @@ export function SpanDetailContent({ span, evals, evalGroups, runStartTime, proje
   const offsetMS = spanStart - runStart;
 
   const attrs = span.Attributes ?? {};
-  const prompt = attrs["gen_ai.prompt"] ?? attrs["llm.prompt"] ?? null;
-  const completion = attrs["gen_ai.completion"] ?? attrs["llm.completion"] ?? null;
+
+  function resolvePayloadField(value: string | undefined): string | null {
+    if (!value) return null;
+    if (value.startsWith("payload_ref:")) return null;
+    return value;
+  }
+
+  const rawPrompt = attrs["gen_ai.prompt"] ?? attrs["llm.prompt"];
+  const rawCompletion = attrs["gen_ai.completion"] ?? attrs["llm.completion"];
+  const rawToolInput = attrs["tool.input"];
+  const rawToolOutput = attrs["tool.output"];
+  const prompt = resolvePayloadField(rawPrompt);
+  const completion = resolvePayloadField(rawCompletion);
+  const toolInput = resolvePayloadField(rawToolInput);
+  const toolOutput = resolvePayloadField(rawToolOutput);
+  const promptOffloaded = isResolvingPayload && (rawPrompt === "" || (rawPrompt?.startsWith("payload_ref:") ?? false));
+  const completionOffloaded = isResolvingPayload && (rawCompletion === "" || (rawCompletion?.startsWith("payload_ref:") ?? false));
+  const toolInputOffloaded = isResolvingPayload && (rawToolInput === "" || (rawToolInput?.startsWith("payload_ref:") ?? false));
+  const toolOutputOffloaded = isResolvingPayload && (rawToolOutput === "" || (rawToolOutput?.startsWith("payload_ref:") ?? false));
 
   // Exclude I/O keys from the attribute table (shown separately)
-  const ioKeys = new Set(["gen_ai.prompt", "gen_ai.completion", "llm.prompt", "llm.completion"]);
+  const ioKeys = new Set(["gen_ai.prompt", "gen_ai.completion", "llm.prompt", "llm.completion", "tool.input", "tool.output"]);
   const filteredAttrs = Object.fromEntries(Object.entries(attrs).filter(([k]) => !ioKeys.has(k)));
   const attrGroups = groupAttributes(filteredAttrs);
   const resourceGroups = groupAttributes(span.ResourceAttrs ?? {});
@@ -368,21 +386,64 @@ export function SpanDetailContent({ span, evals, evalGroups, runStartTime, proje
       )}
 
       {/* Input / Output */}
-      {(prompt || completion) && (
+      {(prompt || completion || promptOffloaded || completionOffloaded || toolInput || toolOutput || toolInputOffloaded || toolOutputOffloaded) && (
         <div className="flex flex-col gap-2">
           <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Input / Output</p>
-          {prompt && (
-            <CollapsibleSection title="Prompt (input)">
-              <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
-                {prompt}
-              </pre>
+          {(prompt || promptOffloaded) && (
+            <CollapsibleSection title="Prompt (input)" defaultOpen={promptOffloaded}>
+              {promptOffloaded ? (
+                <div className="animate-pulse flex flex-col gap-2 py-1">
+                  <div className="h-3 bg-[var(--border)] rounded w-full" />
+                  <div className="h-3 bg-[var(--border)] rounded w-5/6" />
+                  <div className="h-3 bg-[var(--border)] rounded w-4/6" />
+                </div>
+              ) : (
+                <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
+                  {prompt}
+                </pre>
+              )}
             </CollapsibleSection>
           )}
-          {completion && (
-            <CollapsibleSection title="Completion (output)">
-              <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
-                {completion}
-              </pre>
+          {(completion || completionOffloaded) && (
+            <CollapsibleSection title="Completion (output)" defaultOpen={completionOffloaded}>
+              {completionOffloaded ? (
+                <div className="animate-pulse flex flex-col gap-2 py-1">
+                  <div className="h-3 bg-[var(--border)] rounded w-full" />
+                  <div className="h-3 bg-[var(--border)] rounded w-3/4" />
+                </div>
+              ) : (
+                <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
+                  {completion}
+                </pre>
+              )}
+            </CollapsibleSection>
+          )}
+          {(toolInput || toolInputOffloaded) && (
+            <CollapsibleSection title="Tool input" defaultOpen={toolInputOffloaded}>
+              {toolInputOffloaded ? (
+                <div className="animate-pulse flex flex-col gap-2 py-1">
+                  <div className="h-3 bg-[var(--border)] rounded w-full" />
+                  <div className="h-3 bg-[var(--border)] rounded w-5/6" />
+                </div>
+              ) : (
+                <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
+                  {toolInput}
+                </pre>
+              )}
+            </CollapsibleSection>
+          )}
+          {(toolOutput || toolOutputOffloaded) && (
+            <CollapsibleSection title="Tool output" defaultOpen={toolOutputOffloaded}>
+              {toolOutputOffloaded ? (
+                <div className="animate-pulse flex flex-col gap-2 py-1">
+                  <div className="h-3 bg-[var(--border)] rounded w-full" />
+                  <div className="h-3 bg-[var(--border)] rounded w-3/4" />
+                </div>
+              ) : (
+                <pre className="text-xs font-mono text-[var(--text-muted)] whitespace-pre-wrap break-all max-h-64 overflow-y-auto leading-relaxed">
+                  {toolOutput}
+                </pre>
+              )}
             </CollapsibleSection>
           )}
         </div>

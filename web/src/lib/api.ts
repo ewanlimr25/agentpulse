@@ -83,6 +83,8 @@ export const runsApi = {
     apiFetch<RunComparison>(
       `/api/v1/projects/${projectId}/runs/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`
     ),
+  fetchSpan: (runId: string, spanId: string, projectId: string) =>
+    apiFetch<Span>(`/api/v1/runs/${runId}/spans/${spanId}`, { projectId }),
 };
 
 // ── Evals ─────────────────────────────────────────────────────────────────────

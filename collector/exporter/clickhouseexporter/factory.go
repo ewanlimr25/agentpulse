@@ -30,12 +30,24 @@ func createTracesExporter(
 		return nil, fmt.Errorf("invalid config type %T", cfg)
 	}
 
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	ins, err := newClickhouseInserter(c)
 	if err != nil {
 		return nil, fmt.Errorf("creating clickhouse inserter: %w", err)
 	}
 
-	exp := newTracesExporter(c, set.Logger, ins)
+	var store PayloadStore
+	if c.S3.Enabled {
+		store, err = newS3PayloadStore(c.S3)
+		if err != nil {
+			return nil, fmt.Errorf("creating s3 payload store: %w", err)
+		}
+	}
+
+	exp := newTracesExporter(c, set.Logger, ins, store)
 
 	return exporterhelper.NewTraces(
 		ctx, set, cfg,

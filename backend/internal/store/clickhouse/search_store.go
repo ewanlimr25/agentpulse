@@ -95,6 +95,7 @@ func buildWhereClause(params *domain.SearchParams, escaped string) (string, []an
 	args = append(args, escaped, escaped, escaped, escaped)
 
 	where := `project_id = ?
+  AND payload_s3_key = ''
   AND (
       search_prompt      LIKE '%' || lower(?) || '%'
    OR search_completion  LIKE '%' || lower(?) || '%'

@@ -39,6 +39,8 @@ type spanRow struct {
 	Attributes    map[string]string
 	ResourceAttrs map[string]string
 	Events        string // JSON
+
+	PayloadS3Key string
 }
 
 // spanRowFromOTel converts an OTel span + resource attributes into a spanRow.

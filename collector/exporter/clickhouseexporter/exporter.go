@@ -2,7 +2,9 @@ package clickhouseexporter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"regexp"
 	"sync"
 	"time"
 
@@ -10,6 +12,17 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
 )
+
+// payloadAttrs are the four attribute keys eligible for offloading.
+var payloadAttrs = [4]string{
+	"gen_ai.prompt",
+	"gen_ai.completion",
+	"tool.input",
+	"tool.output",
+}
+
+// validKeyComponent validates that a project_id or run_id is safe for use in an S3 key.
+var validKeyComponent = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
 // inserter abstracts the ClickHouse write path for testability.
 type inserter interface {
@@ -22,20 +35,22 @@ type tracesExporter struct {
 	cfg      *Config
 	logger   *zap.Logger
 	inserter inserter
+	payloads PayloadStore
 
-	mu     sync.Mutex
-	buf    []spanRow
+	mu  sync.Mutex
+	buf []spanRow
 
 	flushCh chan struct{}
 	stopCh  chan struct{}
 	doneCh  chan struct{}
 }
 
-func newTracesExporter(cfg *Config, logger *zap.Logger, ins inserter) *tracesExporter {
+func newTracesExporter(cfg *Config, logger *zap.Logger, ins inserter, store PayloadStore) *tracesExporter {
 	return &tracesExporter{
 		cfg:      cfg,
 		logger:   logger,
 		inserter: ins,
+		payloads: store,
 		buf:      make([]spanRow, 0, cfg.BatchSize),
 		flushCh:  make(chan struct{}, 1),
 		stopCh:   make(chan struct{}),
@@ -54,7 +69,7 @@ func (e *tracesExporter) Start(ctx context.Context, _ component.Host) error {
 	return nil
 }
 
-// probeSchema verifies the spans table has the user_id and ttft_ms columns.
+// probeSchema verifies the spans table has the expected columns.
 // This prevents silent span data loss if migrations have not yet been applied.
 func (e *tracesExporter) probeSchema(ctx context.Context) error {
 	conn, err := connect(e.cfg)
@@ -62,8 +77,8 @@ func (e *tracesExporter) probeSchema(ctx context.Context) error {
 		return fmt.Errorf("connecting to clickhouse: %w", err)
 	}
 	defer conn.Close()
-	if err := conn.Exec(ctx, fmt.Sprintf("SELECT user_id, ttft_ms FROM %s.%s LIMIT 0", e.cfg.Database, e.cfg.Table)); err != nil {
-		return fmt.Errorf("user_id or ttft_ms column missing from %s.%s — run migrations 009_user_id.sql and 013_ttft.sql before starting the collector: %w", e.cfg.Database, e.cfg.Table, err)
+	if err := conn.Exec(ctx, fmt.Sprintf("SELECT user_id, ttft_ms, payload_s3_key FROM %s.%s LIMIT 0", e.cfg.Database, e.cfg.Table)); err != nil {
+		return fmt.Errorf("column missing from %s.%s — run migrations 009_user_id.sql, 013_ttft.sql, and 016_payload_ref.sql before starting the collector: %w", e.cfg.Database, e.cfg.Table, err)
 	}
 	return nil
 }
@@ -140,6 +155,11 @@ func (e *tracesExporter) flush(ctx context.Context) {
 	e.buf = make([]spanRow, 0, e.cfg.BatchSize)
 	e.mu.Unlock()
 
+	// Offload oversized payloads to S3 before inserting into ClickHouse.
+	if e.cfg.S3.Enabled && e.payloads != nil {
+		e.offloadBatch(ctx, rows)
+	}
+
 	var lastErr error
 	for attempt := range e.cfg.MaxRetries {
 		if err := e.inserter.Insert(ctx, rows); err != nil {
@@ -168,6 +188,95 @@ func (e *tracesExporter) flush(ctx context.Context) {
 	)
 }
 
+// offloadBatch processes a batch of rows concurrently, offloading oversized payload
+// attributes to S3. Uses a bounded goroutine pool of 8 workers.
+func (e *tracesExporter) offloadBatch(ctx context.Context, rows []spanRow) {
+	const poolSize = 8
+	sem := make(chan struct{}, poolSize)
+	var wg sync.WaitGroup
+
+	for i := range rows {
+		row := &rows[i]
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			e.offloadRow(ctx, row)
+		}()
+	}
+	wg.Wait()
+}
+
+// offloadRow checks a single row's payload attributes and offloads any that exceed
+// the threshold. On any error it logs a warning and leaves the row unchanged (fail-open).
+func (e *tracesExporter) offloadRow(ctx context.Context, row *spanRow) {
+	// Validate key components before doing any work.
+	if !validKeyComponent.MatchString(row.ProjectID) {
+		e.logger.Warn("payload offload skipped: invalid project_id",
+			zap.String("project_id", row.ProjectID),
+			zap.String("span_id", row.SpanID),
+		)
+		return
+	}
+	if !validKeyComponent.MatchString(row.RunID) {
+		e.logger.Warn("payload offload skipped: invalid run_id",
+			zap.String("run_id", row.RunID),
+			zap.String("span_id", row.SpanID),
+		)
+		return
+	}
+	if row.SpanID == "" {
+		e.logger.Warn("payload offload skipped: empty span_id")
+		return
+	}
+
+	threshold := e.cfg.S3.ThresholdBytes
+
+	// Collect oversized fields.
+	oversized := make(map[string]string)
+	for _, key := range payloadAttrs {
+		val, ok := row.Attributes[key]
+		if ok && len(val) > threshold {
+			oversized[key] = val
+		}
+	}
+
+	if len(oversized) == 0 {
+		return
+	}
+
+	// Build the JSON payload.
+	data, err := json.Marshal(oversized)
+	if err != nil {
+		e.logger.Warn("payload offload skipped: could not marshal payload",
+			zap.String("span_id", row.SpanID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// Construct S3 key: {project_id}/{YYYY-MM-DD}/{run_id}/{span_id}.json
+	date := row.StartTime.UTC().Format("2006-01-02")
+	s3Key := fmt.Sprintf("%s/%s/%s/%s.json", row.ProjectID, date, row.RunID, row.SpanID)
+
+	if err := e.payloads.Put(ctx, s3Key, data); err != nil {
+		e.logger.Warn("payload offload failed, keeping attributes inline",
+			zap.String("span_id", row.SpanID),
+			zap.String("s3_key", s3Key),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// On success: clear the offloaded fields and set metadata.
+	for key := range oversized {
+		row.Attributes[key] = ""
+	}
+	row.Attributes["agentpulse.payload_offloaded"] = "true"
+	row.PayloadS3Key = s3Key
+}
+
 // clickhouseInserter is the production inserter backed by the ClickHouse driver.
 type clickhouseInserter struct {
 	cfg *Config
@@ -191,7 +300,8 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 		span_name, service_name, status_code, status_message,
 		start_time, end_time,
 		input_tokens, output_tokens, cost_usd, ttft_ms,
-		attributes, resource_attrs, events
+		attributes, resource_attrs, events,
+		payload_s3_key
 	) VALUES`, c.cfg.Database, c.cfg.Table))
 	if err != nil {
 		return fmt.Errorf("preparing batch: %w", err)
@@ -206,6 +316,7 @@ func (c *clickhouseInserter) Insert(ctx context.Context, rows []spanRow) error {
 			r.StartTime, r.EndTime,
 			r.InputTokens, r.OutputTokens, r.CostUSD, r.TtftMs,
 			r.Attributes, r.ResourceAttrs, r.Events,
+			r.PayloadS3Key,
 		); err != nil {
 			return fmt.Errorf("appending row: %w", err)
 		}

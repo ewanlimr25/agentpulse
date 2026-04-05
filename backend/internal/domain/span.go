@@ -57,6 +57,11 @@ type Span struct {
 
 	// TtftMs is time-to-first-token in milliseconds. Zero for non-streaming spans.
 	TtftMs float64
+
+	// PayloadS3Key is the S3 object key for offloaded payload fields.
+	// Non-empty when gen_ai.prompt, gen_ai.completion, tool.input, or tool.output
+	// were too large to store inline in ClickHouse.
+	PayloadS3Key string
 }
 
 // SpanEvent represents a timed annotation on a span.

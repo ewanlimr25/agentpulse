@@ -12,6 +12,10 @@ import (
 type SpanStore interface {
 	// ListByRun returns all spans for a given run, ordered by start time.
 	ListByRun(ctx context.Context, runID string) ([]*domain.Span, error)
+	// GetByID returns a single span filtered by both project_id and span_id.
+	// Returns a not-found error (wrapping a sentinel) if no span matches.
+	// The projectID parameter is required for security — prevents cross-project access.
+	GetByID(ctx context.Context, projectID, spanID string) (*domain.Span, error)
 }
 
 // RunStore queries per-run aggregated metrics from ClickHouse.

@@ -15,8 +15,10 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/config"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/loopdetect"
+	"github.com/agentpulse/agentpulse/backend/internal/store"
 	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
+	s3store "github.com/agentpulse/agentpulse/backend/internal/store/s3"
 )
 
 func main() {
@@ -64,6 +66,18 @@ func main() {
 	piiConfigStore := pgstore.NewProjectPIIConfigStore(pgPool)
 	spanFeedbackStore := pgstore.NewSpanFeedbackStore(pgPool)
 
+	// ── Payload store (S3 offloading) ─────────────────────────────────────
+	var payloadStore store.PayloadStore
+	if cfg.S3.Bucket != "" && cfg.S3.Endpoint != "" {
+		ps, err := s3store.New(cfg.S3)
+		if err != nil {
+			slog.Error("s3 payload store init failed", "error", err)
+			os.Exit(1)
+		}
+		payloadStore = ps
+		slog.Info("S3 payload store initialized", "bucket", cfg.S3.Bucket)
+	}
+
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -87,7 +101,7 @@ func main() {
 	if cfg.AnthropicAPIKey != "" || cfg.OpenAIAPIKey != "" || cfg.GoogleAIAPIKey != "" {
 		// Worker reloads registry from evalConfigStore every 60s to pick up new custom evals.
 		go eval.NewEnqueuer(chConn, evalJobStore, evalConfigStore).Run(ctx)
-		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, providerKeys).Run(ctx)
+		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, providerKeys, payloadStore).Run(ctx)
 		slog.Info("eval worker started")
 	} else {
 		slog.Info("eval worker disabled (no judge provider API keys set)")
@@ -97,7 +111,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

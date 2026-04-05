@@ -10,6 +10,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
 	evaltypes "github.com/agentpulse/agentpulse/backend/internal/eval/types"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
+	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 )
 
 const (
@@ -32,11 +33,12 @@ type Worker struct {
 	promptVersions map[string]int // evalName → prompt_version (custom evals only)
 	registryAt     time.Time
 	providerKeys   ProviderKeys
+	payloads       store.PayloadStore // nullable — nil means S3 disabled
 	// sem caps the number of concurrent outbound judge API calls across all jobs.
 	sem chan struct{}
 }
 
-func NewWorker(chConn driver.Conn, jobStore store.EvalJobStore, evalStore store.EvalStore, configStore store.EvalConfigStore, providerKeys ProviderKeys) *Worker {
+func NewWorker(chConn driver.Conn, jobStore store.EvalJobStore, evalStore store.EvalStore, configStore store.EvalConfigStore, providerKeys ProviderKeys, payloads store.PayloadStore) *Worker {
 	return &Worker{
 		chConn:       chConn,
 		jobStore:     jobStore,
@@ -44,6 +46,7 @@ func NewWorker(chConn driver.Conn, jobStore store.EvalJobStore, evalStore store.
 		configStore:  configStore,
 		registry:     NewRegistry(nil), // built-ins only until first refresh
 		providerKeys: providerKeys,
+		payloads:     payloads,
 		sem:          make(chan struct{}, judgeMaxParallel),
 	}
 }
@@ -127,15 +130,35 @@ func (w *Worker) score(ctx context.Context, job *domain.EvalJob) error {
 			attributes['agent.name'],
 			attributes['tool.name'],
 			attributes['tool.input'],
-			attributes['tool.output']
+			attributes['tool.output'],
+			payload_s3_key
 		FROM spans
 		WHERE span_id = ?
 		LIMIT 1
 	`, job.SpanID)
 
-	var projectID, spanKind, prompt, completion, genAIContext, model, agentName, toolName, toolInput, toolOutput string
-	if err := row.Scan(&projectID, &spanKind, &prompt, &completion, &genAIContext, &model, &agentName, &toolName, &toolInput, &toolOutput); err != nil {
+	var projectID, spanKind, prompt, completion, genAIContext, model, agentName, toolName, toolInput, toolOutput, payloadS3Key string
+	if err := row.Scan(&projectID, &spanKind, &prompt, &completion, &genAIContext, &model, &agentName, &toolName, &toolInput, &toolOutput, &payloadS3Key); err != nil {
 		return fmt.Errorf("fetch span: %w", err)
+	}
+
+	// Resolve offloaded payloads from S3 if present.
+	if payloadS3Key != "" && w.payloads != nil {
+		tmpSpan := &domain.Span{
+			ProjectID:    projectID,
+			PayloadS3Key: payloadS3Key,
+			Attributes: map[string]string{
+				"gen_ai.prompt":     prompt,
+				"gen_ai.completion": completion,
+				"tool.input":        toolInput,
+				"tool.output":       toolOutput,
+			},
+		}
+		chstore.ResolvePayloads(ctx, tmpSpan, w.payloads)
+		prompt = tmpSpan.Attributes["gen_ai.prompt"]
+		completion = tmpSpan.Attributes["gen_ai.completion"]
+		toolInput = tmpSpan.Attributes["tool.input"]
+		toolOutput = tmpSpan.Attributes["tool.output"]
 	}
 
 	// Map to SpanContext based on span kind.

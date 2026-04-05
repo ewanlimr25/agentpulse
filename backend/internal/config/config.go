@@ -66,10 +66,11 @@ type ClickHouseConfig struct {
 }
 
 type S3Config struct {
-	Endpoint  string
-	Bucket    string
-	AccessKey string
-	SecretKey string
+	Endpoint     string
+	Bucket       string
+	AccessKey    string
+	SecretKey    string
+	EnforceHTTPS bool
 }
 
 // Load reads configuration from environment variables.
@@ -90,10 +91,11 @@ func Load() (*Config, error) {
 			Password: getEnv("CLICKHOUSE_PASSWORD", "agentpulse"),
 		},
 		S3: S3Config{
-			Endpoint:  getEnv("S3_ENDPOINT", "http://localhost:9090"),
-			Bucket:    getEnv("S3_BUCKET", "agentpulse-spans"),
-			AccessKey: getEnv("S3_ACCESS_KEY", "agentpulse"),
-			SecretKey: getEnv("S3_SECRET_KEY", "agentpulse"),
+			Endpoint:     getEnv("S3_ENDPOINT", "http://localhost:9090"),
+			Bucket:       getEnv("S3_BUCKET", "agentpulse-spans"),
+			AccessKey:    getEnv("S3_ACCESS_KEY", "agentpulse"),
+			SecretKey:    getEnv("S3_SECRET_KEY", "agentpulse"),
+			EnforceHTTPS: getEnvBool("S3_ENFORCE_HTTPS", true),
 		},
 		AnthropicAPIKey: getEnv("ANTHROPIC_API_KEY", ""),
 		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
@@ -143,4 +145,17 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	switch strings.ToLower(v) {
+	case "false", "0", "no":
+		return false
+	default:
+		return true
+	}
 }
