@@ -18,6 +18,32 @@ export function _setTracerOverride(t: Tracer | undefined): void {
   _tracerOverride = t
 }
 
+/**
+ * Replay hook signature. When set via `__setReplayHook`, every wrapped span
+ * consults the hook BEFORE invoking the user's `fn`. If the hook returns
+ * `{ matched: true, value }`, that value is returned in place of `fn`'s
+ * result. If it returns `{ matched: false }`, `fn` runs normally.
+ *
+ * The hook is responsible for setting any replay provenance attributes on
+ * the active span (it can call `trace.getActiveSpan()`).
+ *
+ * @internal — used by `replay.ts`.
+ */
+export type ReplayHook = (info: {
+  spanKind: attrs.AgentSpanKind
+  spanName: string
+  agentName: string | undefined
+  span: Span
+  args: unknown[]
+}) => { matched: true; value: unknown } | { matched: false }
+
+let _replayHook: ReplayHook | undefined
+
+/** @internal — used by `replay.ts`. */
+export function __setReplayHook(hook: ReplayHook | undefined): void {
+  _replayHook = hook
+}
+
 function getTracer() {
   return _tracerOverride ?? trace.getTracer('agentpulse')
 }
@@ -46,11 +72,24 @@ async function withSpan<T>(
   fn: (span: Span) => T | Promise<T>,
   agentName?: string,
   runId?: string,
+  replayArgs?: unknown[],
 ): Promise<T> {
   return getTracer().startActiveSpan(spanName, async (span) => {
     setCommonAttrs(span, spanKind, agentName, runId)
     setExtra(span)
     try {
+      if (_replayHook) {
+        const result = _replayHook({
+          spanKind,
+          spanName,
+          agentName,
+          span,
+          args: replayArgs ?? [],
+        })
+        if (result.matched) {
+          return result.value as T
+        }
+      }
       const result = await fn(span)
       return result
     } catch (err) {

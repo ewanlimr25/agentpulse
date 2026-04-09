@@ -1,32 +1,10 @@
 # AgentPulse Roadmap
 
----
+## In planning
 
-## Tier 3 — Strategic Differentiators
+### Sidebar Navigation Redesign — Two-Tier Collapsible, Config-Driven
+Replaces the horizontal `TabBar` with a persistent left sidebar, converts each tab into a real sub-route under `/projects/[projectId]/*`, introduces a project switcher and `Cmd+K` command palette, and lays groundwork for future nested features (e.g. Alerts → Rules/History, Evals → Runs/Rules).
 
-### H. Agent Replay / Sandbox Debugging
+**Full plan:** [`.claude/plan/sidebar-navigation.md`](../.claude/plan/sidebar-navigation.md)
 
-**Why it's a moat:** no competitor does this. A developer can take a failed production trace and replay it locally with mocked tool responses (sourced from the original `tool.input`/`tool.output` span attributes), reproducing a prod failure deterministically.
-
-**Architecture:**
-- Replay engine: reads a run's span tree from the API, reconstructs the execution graph
-- SDK "replay mode": intercepts real tool/LLM calls and substitutes recorded responses
-- Configurable overrides: swap one tool's response to test a hypothesis
-- UI: "Replay this run" button on run detail page, diff view showing original vs replay spans
-
-**Effort:** ~2–3 weeks.
-
----
-
-### I. Hardcoded Defaults Warning
-
-Log a `WARN` at startup if `DATABASE_URL` contains `localhost` or the default `agentpulse:agentpulse` credentials. One-line change; do it opportunistically while touching config files for another item.
-
----
-
-## Summary
-
-| # | Item | Effort | Priority |
-|---|------|--------|----------|
-| H | Agent Replay / Sandbox Debugging | 2–3w | 🟡 Tier 3 |
-| I | Hardcoded defaults warning | 30m | 🟢 Opportunistic |
+Status: **complete** (Phases 1–5 shipped).

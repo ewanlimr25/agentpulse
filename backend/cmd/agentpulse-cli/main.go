@@ -13,13 +13,17 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(2)
 	}
 
 	switch os.Args[1] {
 	case "eval":
+		if len(os.Args) < 3 {
+			printUsage()
+			os.Exit(2)
+		}
 		switch os.Args[2] {
 		case "check":
 			runEvalCheck(os.Args[3:])
@@ -28,6 +32,8 @@ func main() {
 			printUsage()
 			os.Exit(2)
 		}
+	case "replay":
+		runReplay(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		printUsage()
@@ -39,7 +45,8 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `agentpulse-cli — AgentPulse CLI
 
 Commands:
-  eval check   Check eval scores against a threshold (CI quality gate)
+  eval check         Check eval scores against a threshold (CI quality gate)
+  replay <run-id>    Download a run's replay bundle for local sandbox debugging
 
-Run "agentpulse-cli eval check --help" for flags.`)
+Run "agentpulse-cli eval check --help" or "agentpulse-cli replay --help" for flags.`)
 }

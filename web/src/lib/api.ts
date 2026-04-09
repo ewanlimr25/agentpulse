@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -85,6 +85,8 @@ export const runsApi = {
     ),
   fetchSpan: (runId: string, spanId: string, projectId: string) =>
     apiFetch<Span>(`/api/v1/runs/${runId}/spans/${spanId}`, { projectId }),
+  replayBundle: (runId: string, projectId: string) =>
+    apiFetch<ReplayBundle>(`/api/v1/runs/${runId}/replay-bundle`, { projectId }),
 };
 
 // ── Evals ─────────────────────────────────────────────────────────────────────

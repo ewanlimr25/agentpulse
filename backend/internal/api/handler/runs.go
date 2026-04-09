@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -241,6 +243,93 @@ func (h *RunHandler) GetSpan(w http.ResponseWriter, r *http.Request) {
 	chstore.ResolvePayloads(r.Context(), span, h.payloads)
 
 	httputil.JSON(w, http.StatusOK, span)
+}
+
+// replayBundleMaxBytes caps the size of a single replay bundle response.
+// Larger bundles return 413; the CLI hint suggests --span-limit (future flag).
+const replayBundleMaxBytes = 50 << 20 // 50 MiB
+
+// replayPayloadResolveConcurrency bounds concurrent S3 fetches per request.
+const replayPayloadResolveConcurrency = 8
+
+// ReplayBundle returns a self-contained snapshot of a run that an SDK can
+// load in "replay mode" to deterministically re-execute against the recorded
+// tool/LLM responses.
+//
+// Route: GET /api/v1/runs/{runID}/replay-bundle
+func (h *RunHandler) ReplayBundle(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+
+	run, err := h.runs.Get(r.Context(), runID)
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, "run not found")
+		return
+	}
+
+	spans, err := h.spans.ListByRun(r.Context(), runID)
+	if err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to list spans")
+		return
+	}
+
+	// Topology is optional — fail-open if it's missing or errors.
+	topology, _ := h.topology.GetByRun(r.Context(), runID)
+
+	// Resolve offloaded payloads in parallel with a bounded worker pool.
+	// ResolvePayloads is fail-open and logs internally.
+	if len(spans) > 0 {
+		sem := make(chan struct{}, replayPayloadResolveConcurrency)
+		var wg sync.WaitGroup
+		for _, sp := range spans {
+			if sp.PayloadS3Key == "" {
+				continue
+			}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(span *domain.Span) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				chstore.ResolvePayloads(r.Context(), span, h.payloads)
+			}(sp)
+		}
+		wg.Wait()
+	}
+
+	// Compute CallIndex per (agent_name, span_name) by walking spans in
+	// start_time order. The store already returns spans ordered ASC by
+	// start_time (see span_store.go listByRunQuery).
+	replaySpans := make([]*domain.ReplaySpan, len(spans))
+	counts := make(map[string]int, len(spans))
+	for i, sp := range spans {
+		key := sp.AgentName + "\x00" + sp.SpanName
+		idx := counts[key]
+		counts[key] = idx + 1
+		replaySpans[i] = &domain.ReplaySpan{Span: sp, CallIndex: idx}
+	}
+
+	bundle := &domain.ReplayBundle{
+		SchemaVersion: 1,
+		Run:           run,
+		Spans:         replaySpans,
+		Topology:      topology,
+	}
+
+	// Encode to a buffer first so we can enforce the 50MB cap before
+	// committing to a 200 OK response.
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(map[string]any{"data": bundle}); err != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to encode replay bundle")
+		return
+	}
+	if buf.Len() > replayBundleMaxBytes {
+		httputil.Error(w, http.StatusRequestEntityTooLarge,
+			"replay bundle exceeds 50MB limit; use --span-limit to reduce span count")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
 }
 
 func intQueryParam(r *http.Request, key string, fallback int) int {

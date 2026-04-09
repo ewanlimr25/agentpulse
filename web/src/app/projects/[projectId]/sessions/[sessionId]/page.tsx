@@ -4,7 +4,6 @@ import { use } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { projectsApi, sessionsApi } from "@/lib/api";
-import { Navbar } from "@/components/Navbar";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { RunRow, formatCost } from "@/components/runs/RunRow";
 import { SessionTimeline } from "@/components/sessions/SessionTimeline";
@@ -53,8 +52,7 @@ export default function SessionDetailPage({
       : decodedSessionId;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
+    <div className="flex flex-col flex-1">
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-[var(--text-muted)] mb-6">

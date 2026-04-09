@@ -140,6 +140,12 @@ seed: db-reset ## Create demo projects via API and seed with realistic multi-age
 	@echo "Waiting for spans to land in ClickHouse..."
 	@sleep 5
 	$(MAKE) seed-evals
+	$(MAKE) seed-alert-history
+
+seed-alert-history: ## Insert synthetic alert events and budget alerts for all demo projects
+	@echo "Inserting historical alert events and budget alerts..."
+	docker compose exec -T postgres psql -U agentpulse -d agentpulse < scripts/seed-alert-history.sql
+	@echo "Alert history inserted."
 
 seed-evals: ## Insert mock eval scores (multi-type) and eval configs for all demo projects
 	@echo "Inserting mock eval scores..."

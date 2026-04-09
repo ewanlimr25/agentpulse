@@ -4,12 +4,12 @@ import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi, evalsApi, loopsApi } from "@/lib/api";
-import { Navbar } from "@/components/Navbar";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 import { LoopBanner } from "@/components/loops/LoopBanner";
+import { ReplayModal } from "@/components/runs/ReplayModal";
 import type { Span, SpanEval, SpanFeedback } from "@/lib/types";
 import { formatDurationNS } from "@/lib/format";
 
@@ -73,6 +73,7 @@ export default function RunPage({
 }) {
   const { projectId, runId } = use(params);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
+  const [replayOpen, setReplayOpen] = useState(false);
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
@@ -109,9 +110,14 @@ export default function RunPage({
   const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
   const selectedEvals = selectedSpanId ? (evalsBySpan.get(selectedSpanId) ?? []) : [];
 
+  // Detect if any span carries a replay-source attribute, surfacing a banner
+  // that links back to the original run.
+  const replaySourceRunId = spans?.find(
+    (s) => s.Attributes?.["agentpulse.replay_source_run_id"]
+  )?.Attributes?.["agentpulse.replay_source_run_id"];
+
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
+    <div className="flex flex-col flex-1">
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10">
         <div className="mb-2 flex items-center gap-2 text-sm text-[var(--text-muted)]">
           <Link href="/" className="hover:text-indigo-400">Projects</Link>
@@ -126,13 +132,45 @@ export default function RunPage({
           {run && (
             <StatusBadge status={run.Status === "ok" ? "ok" : "error"} size="md" />
           )}
+          <button
+            onClick={() => setReplayOpen(true)}
+            className="ml-auto px-4 py-2 rounded-lg border border-indigo-600/60 hover:bg-indigo-600/10 text-indigo-300 text-sm font-medium transition-colors"
+          >
+            Replay this run
+          </button>
           <Link
             href={`/projects/${projectId}/runs/${runId}/topology`}
-            className="ml-auto px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
+            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors"
           >
             View Topology →
           </Link>
         </div>
+
+        {replaySourceRunId && (
+          <div className="flex items-start gap-3 px-4 py-3 mb-6 rounded-xl border border-violet-700/60 bg-violet-950/30 text-violet-300 text-sm">
+            <span className="mt-0.5 shrink-0 text-violet-400">↻</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">
+                This run is a replay of{" "}
+                <Link
+                  href={`/projects/${projectId}/runs/${replaySourceRunId}`}
+                  className="font-mono underline hover:text-violet-200"
+                >
+                  {replaySourceRunId.slice(0, 12)}…
+                </Link>
+              </p>
+              <p className="mt-1 text-violet-400/70 text-xs">
+                Spans below carry recorded inputs and outputs from the original run.
+              </p>
+            </div>
+            <Link
+              href={`/projects/${projectId}/runs/${replaySourceRunId}/replay/${runId}`}
+              className="shrink-0 text-xs px-2 py-1 rounded-md border border-violet-600 text-violet-200 hover:bg-violet-900/40"
+            >
+              View diff →
+            </Link>
+          </div>
+        )}
 
         <LoopBanner loops={loops ?? []} />
 
@@ -181,6 +219,13 @@ export default function RunPage({
           )}
         </div>
       </main>
+
+      <ReplayModal
+        runId={runId}
+        projectId={projectId}
+        open={replayOpen}
+        onClose={() => setReplayOpen(false)}
+      />
 
       <SpanDetailDrawer
         span={selectedSpan}

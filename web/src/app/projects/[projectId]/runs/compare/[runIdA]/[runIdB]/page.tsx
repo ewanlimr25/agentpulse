@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi } from "@/lib/api";
 import { AuthError } from "@/lib/api";
-import { Navbar } from "@/components/Navbar";
 import { ComparisonMetrics } from "@/components/compare/ComparisonMetrics";
 import { ComparisonTopology } from "@/components/compare/ComparisonTopology";
 
@@ -43,8 +42,7 @@ export default function CompareRunsPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--bg)]">
-      <Navbar />
+    <div className="flex-1">
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
         {/* Breadcrumb + title */}
         <div>

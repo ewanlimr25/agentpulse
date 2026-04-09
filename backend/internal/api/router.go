@@ -152,6 +152,7 @@ func NewRouter(
 			r.Get("/", runHandler.Get)
 			r.Get("/spans", runHandler.ListSpans)
 			r.Get("/spans/{spanID}", runHandler.GetSpan)
+			r.Get("/replay-bundle", runHandler.ReplayBundle)
 			r.Get("/evals", evalHandler.ListByRun)
 			r.Get("/evals/grouped", evalHandler.ListByRunGrouped)
 			r.Get("/loops", loopHandler.ListByRun)

@@ -4,7 +4,6 @@ import { use, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi } from "@/lib/api";
-import { Navbar } from "@/components/Navbar";
 import { TopologyGraph } from "@/components/topology/TopologyGraph";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 
@@ -40,8 +39,7 @@ export default function TopologyPage({
   const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
 
   return (
-    <div className="flex flex-col h-screen">
-      <Navbar />
+    <div className="flex flex-col h-full">
       <div className="border-b border-[var(--border)] bg-[var(--surface)] px-6 py-2 flex items-center gap-4 text-sm">
         <Link href={`/projects/${projectId}/runs/${runId}`} className="text-[var(--text-muted)] hover:text-indigo-400">
           ← Run Detail

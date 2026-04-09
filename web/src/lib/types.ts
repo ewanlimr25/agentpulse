@@ -307,6 +307,32 @@ export interface RecentAlertEvent extends AlertEvent {
   RuleName: string;
 }
 
+// ── Replay ────────────────────────────────────────────────────────────────────
+
+export interface ReplaySpan {
+  SpanID: string;
+  ParentSpanID: string;
+  AgentSpanKind: string;
+  AgentName: string;
+  SpanName: string;
+  ModelID: string;
+  ToolName: string;
+  CallIndex: number;
+  StatusCode: string;
+  StatusMessage: string;
+  Inputs: Record<string, string>;
+  Outputs: Record<string, string>;
+  InputTokens: number;
+  OutputTokens: number;
+}
+
+export interface ReplayBundle {
+  SchemaVersion: number;
+  Run: Run;
+  Topology: Topology;
+  Spans: ReplaySpan[];
+}
+
 // ── Run Comparison ────────────────────────────────────────────────────────────
 
 export interface RunComparison {

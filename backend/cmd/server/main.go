@@ -32,6 +32,7 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	cfg.WarnDefaults(slog.Warn)
 
 	// ── Storage connections ────────────────────────────────────────────────
 	chConn, err := chstore.Open(cfg.ClickHouse)

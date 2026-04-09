@@ -56,6 +56,7 @@ from agentpulse.spans import (
     tool_call_ctx,
 )
 from agentpulse.tracer import init_tracer, shutdown
+from agentpulse import replay
 
 __all__ = [
     # Core setup
@@ -94,6 +95,8 @@ __all__ = [
     "set_user_id",
     "get_user_id",
     "reset_user",
+    # Replay
+    "replay",
     # Meta
     "__version__",
 ]

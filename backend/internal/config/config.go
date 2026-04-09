@@ -117,6 +117,28 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// WarnDefaults logs a WARN for each connection string that still uses localhost
+// or the default "agentpulse:agentpulse" credentials. Call this once at server
+// startup so operators know they haven't configured production credentials.
+func (c *Config) WarnDefaults(warn func(msg string, args ...any)) {
+	if strings.Contains(c.Postgres.DSN, "localhost") ||
+		strings.Contains(c.Postgres.DSN, "agentpulse:agentpulse") {
+		warn("POSTGRES_DSN uses default/local credentials — set POSTGRES_DSN for production")
+	}
+	if strings.Contains(c.ClickHouse.Addr, "localhost") {
+		warn("CLICKHOUSE_ADDR uses localhost — set CLICKHOUSE_ADDR for production")
+	}
+	if c.ClickHouse.Password == "agentpulse" {
+		warn("CLICKHOUSE_PASSWORD uses default credential — set CLICKHOUSE_PASSWORD for production")
+	}
+	if strings.Contains(c.S3.Endpoint, "localhost") {
+		warn("S3_ENDPOINT uses localhost — set S3_ENDPOINT for production")
+	}
+	if c.S3.SecretKey == "agentpulse" {
+		warn("S3_SECRET_KEY uses default credential — set S3_SECRET_KEY for production")
+	}
+}
+
 func (c *Config) HTTPAddr() string {
 	return c.HTTP.Host + ":" + c.HTTP.Port
 }

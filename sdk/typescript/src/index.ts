@@ -38,5 +38,9 @@ export type { LlmUsage } from './usage.js'
 
 export { recordStreamFirstToken } from './streaming.js'
 
+export * as replay from './replay.js'
+export { ReplayEngine, loadBundle, withReplay } from './replay.js'
+export type { ReplayBundle, ReplaySpan, LoadBundleOptions, Overrides } from './replay.js'
+
 export * as attributes from './generated/attributes.js'
 export type { AgentSpanKind } from './generated/attributes.js'
