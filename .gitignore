@@ -36,7 +36,7 @@ sdk/python/.coverage
 .seed-keys
 sdk/typescript/node_modules/
 sdk/typescript/dist/
-sdk/typescript/package-lock.json
+
 /.claude*
 
 docs/roadmap.md
