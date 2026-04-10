@@ -3,8 +3,6 @@ import { getExportedSpans } from '../setup.js'
 import * as attrs from '../../src/generated/attributes.js'
 import { instrumentOpenAI, uninstrumentOpenAI } from '../../src/integrations/openai.js'
 
-vi.mock('openai/package.json', () => ({ default: { version: '4.68.0' }, version: '4.68.0' }))
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeMockClient(): any {
   return {
