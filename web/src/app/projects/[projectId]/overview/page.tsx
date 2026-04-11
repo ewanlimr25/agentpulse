@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState, useEffect } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { evalsApi, AuthError } from "@/lib/api";
@@ -8,6 +8,12 @@ import { MetricCard } from "@/components/ui/MetricCard";
 import { RunCharts } from "@/components/charts/RunCharts";
 import { useAllFetchedRuns } from "@/lib/hooks/useAllFetchedRuns";
 import { formatCost } from "@/components/runs/RunRow";
+import { GettingStartedPanel } from "@/components/onboarding/GettingStartedPanel";
+
+function isOnboardingDismissed(projectId: string): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(`onboarding:dismissed:${projectId}`) === "1";
+}
 
 export default function OverviewPage({
   params,
@@ -16,6 +22,7 @@ export default function OverviewPage({
 }) {
   const { projectId } = use(params);
   const runs = useAllFetchedRuns(projectId);
+  const [dismissed, setDismissed] = useState(() => isOnboardingDismissed(projectId));
 
   const { data: evalSummaries } = useQuery({
     queryKey: ["evalSummaries", projectId],
@@ -29,19 +36,31 @@ export default function OverviewPage({
     ? ((runs.filter((r) => r.Status === "error").length / runs.length) * 100).toFixed(1)
     : "0";
 
+  const showOnboarding = runs.length === 0 && !dismissed;
+
   return (
     <div className="px-6 py-8">
       <h1 className="text-2xl font-bold text-[var(--text)] mb-6">Overview</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Total Runs" value={runs.length} />
-        <MetricCard label="Total Cost" value={formatCost(totalCost)} accent />
-        <MetricCard label="Total Tokens" value={totalTokens.toLocaleString()} />
-        <MetricCard label="Error Rate" value={`${errorRate}%`} />
-      </div>
+      {showOnboarding && (
+        <div className="mb-8">
+          <GettingStartedPanel projectId={projectId} onDismiss={() => setDismissed(true)} />
+        </div>
+      )}
 
-      <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
-      <RunCharts runs={runs} evalSummaries={evalSummaries} />
+      {!showOnboarding && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+            <MetricCard label="Total Runs" value={runs.length} />
+            <MetricCard label="Total Cost" value={formatCost(totalCost)} accent />
+            <MetricCard label="Total Tokens" value={totalTokens.toLocaleString()} />
+            <MetricCard label="Error Rate" value={`${errorRate}%`} />
+          </div>
+
+          <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Trends</h2>
+          <RunCharts runs={runs} evalSummaries={evalSummaries} />
+        </>
+      )}
 
       <div className="flex items-center justify-between mt-8 mb-4">
         <h2 className="text-lg font-semibold text-[var(--text)]">Recent Runs</h2>
@@ -53,7 +72,7 @@ export default function OverviewPage({
         </Link>
       </div>
       {runs.length === 0 ? (
-        <p className="text-sm text-[var(--text-muted)]">No runs yet.</p>
+        <p className="text-sm text-[var(--text-muted)]">{dismissed ? "No runs yet." : ""}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {runs.slice(0, 5).map((run) => (

@@ -171,8 +171,18 @@ export function RunList({ projectId }: Props) {
         )}
 
         {!isLoading && total === 0 && (
-          <div className="text-[var(--text-muted)] border border-[var(--border)] rounded-xl px-6 py-10 text-center">
-            No runs yet. Send traces with <code className="text-indigo-400">make seed</code>.
+          <div className="border border-[var(--border)] rounded-xl px-6 py-10 text-center flex flex-col items-center gap-3">
+            <p className="text-sm text-[var(--text-muted)]">No runs yet.</p>
+            <p className="text-xs text-[var(--text-muted)]">
+              Visit the{" "}
+              <a
+                href={`/projects/${projectId}/overview`}
+                className="text-indigo-400 hover:text-indigo-300 underline-offset-2 hover:underline transition-colors"
+              >
+                Overview page
+              </a>{" "}
+              to set up the SDK and send your first trace.
+            </p>
           </div>
         )}
       </div>
