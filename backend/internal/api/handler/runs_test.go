@@ -65,6 +65,9 @@ func (f *fakeSpanStore) ListByRun(_ context.Context, _ string) ([]*domain.Span, 
 func (f *fakeSpanStore) GetByID(_ context.Context, _, _ string) (*domain.Span, error) {
 	return nil, chstore.ErrSpanNotFound
 }
+func (f *fakeSpanStore) LatestSpanTime(_ context.Context, _ string) (*time.Time, error) {
+	return nil, nil
+}
 
 type fakeTopologyStore struct {
 	topology *domain.Topology

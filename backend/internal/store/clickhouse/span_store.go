@@ -100,6 +100,30 @@ WHERE project_id = ? AND span_id = ?
 LIMIT 1
 `
 
+const latestSpanTimeQuery = `
+SELECT max(start_time), count()
+FROM spans
+WHERE project_id = ?
+  AND start_time > now() - INTERVAL 24 HOUR
+`
+
+// LatestSpanTime returns the timestamp of the most recent span for a project within the
+// last 24 hours, or nil if no spans exist. Returns nil, nil when count is 0.
+func (s *SpanStore) LatestSpanTime(ctx context.Context, projectID string) (*time.Time, error) {
+	row := s.conn.QueryRow(ctx, latestSpanTimeQuery, projectID)
+
+	var maxTime time.Time
+	var count uint64
+	if err := row.Scan(&maxTime, &count); err != nil {
+		return nil, fmt.Errorf("span_store latest_span_time: %w", err)
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	t := maxTime.UTC()
+	return &t, nil
+}
+
 // GetByID returns a single span filtered by both project_id and span_id.
 // Returns ErrSpanNotFound if no span matches.
 func (s *SpanStore) GetByID(ctx context.Context, projectID, spanID string) (*domain.Span, error) {
