@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { Span, SpanEval, SpanEvalGroup, SpanFeedback, FeedbackRequest } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import type { Span, SpanEval, SpanEvalGroup, SpanFeedback, FeedbackRequest, PlaygroundMessage } from "@/lib/types";
 import { SpanKindBadge } from "./SpanKindBadge";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { formatDurationNS } from "@/lib/format";
-import { spanFeedbackApi } from "@/lib/api";
+import { spanFeedbackApi, playgroundApi } from "@/lib/api";
+import { Beaker } from "lucide-react";
 
 interface Props {
   span: Span;
@@ -79,9 +81,11 @@ function groupAttributes(attrs: Record<string, string>): [string, [string, strin
 }
 
 export function SpanDetailContent({ span, evals, evalGroups, runStartTime, projectId, runId, feedback, onFeedbackChange, isResolvingPayload }: Props) {
+  const router = useRouter();
   const [localFeedback, setLocalFeedback] = useState<SpanFeedback | null>(feedback ?? null);
   const [correctedOutput, setCorrectedOutput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   async function handleRate(rating: "good" | "bad") {
     if (saving) return;
@@ -135,6 +139,58 @@ export function SpanDetailContent({ span, evals, evalGroups, runStartTime, proje
   const completionOffloaded = isResolvingPayload && (rawCompletion === "" || (rawCompletion?.startsWith("payload_ref:") ?? false));
   const toolInputOffloaded = isResolvingPayload && (rawToolInput === "" || (rawToolInput?.startsWith("payload_ref:") ?? false));
   const toolOutputOffloaded = isResolvingPayload && (rawToolOutput === "" || (rawToolOutput?.startsWith("payload_ref:") ?? false));
+
+  async function handleOpenInPlayground() {
+    if (creating || !prompt) return;
+    setCreating(true);
+    try {
+      let messages: PlaygroundMessage[];
+      const trimmed = prompt.trim();
+      if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          messages = arr.map((m: { role?: string; content?: string }) => ({
+            role: (m.role as PlaygroundMessage["role"]) ?? "user",
+            content: m.content ?? String(m),
+          }));
+        } catch {
+          messages = [{ role: "user", content: prompt }];
+        }
+      } else {
+        messages = [{ role: "user", content: prompt }];
+      }
+
+      const tempRaw = attrs["gen_ai.request.temperature"];
+      const temperature = tempRaw ? parseFloat(tempRaw) : undefined;
+      const maxRaw = attrs["gen_ai.request.max_tokens"];
+      const maxTokens = maxRaw ? parseInt(maxRaw, 10) : undefined;
+      const modelId = span.ModelID || "gpt-4o";
+
+      const name = `Playground from ${span.SpanName}`.slice(0, 60);
+
+      const variantConfig = {
+        model_id: modelId,
+        messages,
+        ...(temperature != null && !isNaN(temperature) ? { temperature } : {}),
+        ...(maxTokens != null && !isNaN(maxTokens) ? { max_tokens: maxTokens } : {}),
+      };
+
+      const session = await playgroundApi.createSession(projectId, {
+        name,
+        source_span_id: span.SpanID,
+        source_run_id: runId,
+        variants: [
+          { label: "Variant A", ...variantConfig },
+          { label: "Variant B", ...variantConfig },
+        ],
+      });
+
+      router.push(`/projects/${projectId}/playground/${session.ID}`);
+    } finally {
+      setCreating(false);
+    }
+  }
 
   // Exclude I/O keys from the attribute table (shown separately)
   const ioKeys = new Set(["gen_ai.prompt", "gen_ai.completion", "llm.prompt", "llm.completion", "tool.input", "tool.output"]);
@@ -382,6 +438,21 @@ export function SpanDetailContent({ span, evals, evalGroups, runStartTime, proje
               <p className="font-mono text-indigo-400">${span.CostUSD.toFixed(5)}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Open in Playground (LLM only, prompt resolved) */}
+      {span.AgentSpanKind === "llm.call" && prompt && (
+        <div>
+          <button
+            type="button"
+            disabled={creating || !prompt}
+            onClick={handleOpenInPlayground}
+            className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <Beaker className="w-3.5 h-3.5" />
+            {creating ? "Creating..." : "Open in Playground"}
+          </button>
         </div>
       )}
 

@@ -12,39 +12,49 @@
 models:
   # Anthropic
   claude-opus-4-6:
+    provider: anthropic
     input_per_million: 15.00
     output_per_million: 75.00
   claude-sonnet-4-6:
+    provider: anthropic
     input_per_million: 3.00
     output_per_million: 15.00
   claude-haiku-4-5-20251001:
+    provider: anthropic
     input_per_million: 0.80
     output_per_million: 4.00
 
   # OpenAI
   gpt-4o:
+    provider: openai
     input_per_million: 2.50
     output_per_million: 10.00
   gpt-4o-mini:
+    provider: openai
     input_per_million: 0.15
     output_per_million: 0.60
   o3:
+    provider: openai
     input_per_million: 10.00
     output_per_million: 40.00
   o4-mini:
+    provider: openai
     input_per_million: 1.10
     output_per_million: 4.40
 
   # Google
   gemini-2.0-flash:
+    provider: google
     input_per_million: 0.10
     output_per_million: 0.40
   gemini-2.5-pro:
+    provider: google
     input_per_million: 1.25
     output_per_million: 10.00
 
   # Meta (self-hosted / API providers)
   llama-3.3-70b:
+    provider: meta
     input_per_million: 0.59
     output_per_million: 0.79
 

@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
 )
@@ -16,6 +17,10 @@ type SpanStore interface {
 	// Returns a not-found error (wrapping a sentinel) if no span matches.
 	// The projectID parameter is required for security — prevents cross-project access.
 	GetByID(ctx context.Context, projectID, spanID string) (*domain.Span, error)
+	// LatestSpanTime returns the timestamp of the most recent span for a project,
+	// or nil if no spans exist. The query is bounded to the last 24 hours to avoid
+	// full-table scans.
+	LatestSpanTime(ctx context.Context, projectID string) (*time.Time, error)
 }
 
 // RunStore queries per-run aggregated metrics from ClickHouse.
@@ -190,4 +195,17 @@ type AnalyticsStore interface {
 	ToolStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ToolStats, error)
 	// AgentCostStats returns per-agent cost breakdown within windowSeconds.
 	AgentCostStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.AgentCostStats, error)
+}
+
+// PlaygroundStore manages prompt playground sessions, variants, and executions in Postgres.
+type PlaygroundStore interface {
+	CreateSession(ctx context.Context, s *domain.PlaygroundSession) error
+	GetSession(ctx context.Context, id string) (*domain.PlaygroundSession, error)
+	ListSessionsByProject(ctx context.Context, projectID string, limit, offset int) ([]*domain.PlaygroundSession, error)
+	CountSessionsByProject(ctx context.Context, projectID string) (int, error)
+	DeleteSession(ctx context.Context, id string) error
+	UpsertVariant(ctx context.Context, v *domain.PlaygroundVariant) error
+	ListVariantsBySession(ctx context.Context, sessionID string) ([]*domain.PlaygroundVariant, error)
+	RecordExecution(ctx context.Context, e *domain.PlaygroundExecution) error
+	ListExecutionsByVariant(ctx context.Context, variantID string, limit int) ([]*domain.PlaygroundExecution, error)
 }

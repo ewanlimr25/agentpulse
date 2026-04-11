@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -262,6 +262,12 @@ export const spanFeedbackApi = {
     apiFetch<SpanFeedback[]>(`/api/v1/projects/${projectId}/runs/${runId}/feedback`),
 };
 
+// ── Health ───────────────────────────────────────────────────────────────────
+export const healthApi = {
+  status: (projectId: string) =>
+    apiFetch<ProjectHealth>(`/api/v1/projects/${projectId}/health`),
+};
+
 // ── Search ─────────────────────────────────────────────────────────────────────
 
 export const searchApi = {
@@ -281,4 +287,62 @@ export const searchApi = {
     qs.set('offset', String(params.offset ?? 0));
     return apiFetch<SearchResponse>(`/api/v1/projects/${projectId}/search?${qs}`);
   },
+};
+
+// ── Prompt Playground ────────────────────────────────────────────────────────
+
+export const playgroundApi = {
+  listSessions: (projectId: string, limit = 20, offset = 0) =>
+    apiFetch<PlaygroundSessionsListResponse>(
+      `/api/v1/projects/${projectId}/playground/sessions?limit=${limit}&offset=${offset}`
+    ),
+  getSession: (projectId: string, sessionId: string) =>
+    apiFetch<PlaygroundSession>(
+      `/api/v1/projects/${projectId}/playground/sessions/${sessionId}`
+    ),
+  createSession: (projectId: string, body: {
+    name: string;
+    source_span_id?: string;
+    source_run_id?: string;
+    variants: Array<{
+      label: string;
+      model_id: string;
+      system?: string;
+      messages: PlaygroundMessage[];
+      temperature?: number;
+      max_tokens?: number;
+    }>;
+  }) =>
+    apiFetch<PlaygroundSession>(`/api/v1/projects/${projectId}/playground/sessions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateVariant: (projectId: string, sessionId: string, variantId: string, body: {
+    label?: string;
+    model_id?: string;
+    system?: string;
+    messages?: PlaygroundMessage[];
+    temperature?: number | null;
+    max_tokens?: number | null;
+  }) =>
+    apiFetch<PlaygroundVariant>(
+      `/api/v1/projects/${projectId}/playground/sessions/${sessionId}/variants/${variantId}`,
+      { method: "PUT", body: JSON.stringify(body) }
+    ),
+  runVariant: (projectId: string, sessionId: string, variantId: string) =>
+    apiFetch<PlaygroundExecution>(
+      `/api/v1/projects/${projectId}/playground/sessions/${sessionId}/variants/${variantId}/run`,
+      { method: "POST" }
+    ),
+  deleteSession: (projectId: string, sessionId: string) =>
+    apiFetch<{ deleted: string }>(
+      `/api/v1/projects/${projectId}/playground/sessions/${sessionId}`,
+      { method: "DELETE" }
+    ),
+};
+
+// ── Models ──────────────────────────────────────────────────────────────────
+
+export const modelsApi = {
+  list: () => apiFetch<ModelInfo[]>("/api/v1/models"),
 };

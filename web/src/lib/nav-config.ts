@@ -21,6 +21,7 @@ import {
   Cpu,
   Layers,
   FlaskConical,
+  Beaker,
   DollarSign,
   Bell,
   Users,
@@ -43,6 +44,7 @@ export const PROJECT_NAV: NavSection[] = [
     label: "Analyze",
     items: [
       { label: "Evals", href: (id) => `/projects/${id}/evals`, icon: FlaskConical },
+      { label: "Playground", href: (id) => `/projects/${id}/playground`, icon: Beaker },
     ],
   },
   {

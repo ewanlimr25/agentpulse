@@ -13,6 +13,8 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/api/middleware"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
+	"github.com/agentpulse/agentpulse/backend/internal/llmclient"
+	"github.com/agentpulse/agentpulse/backend/internal/pricing"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
@@ -34,11 +36,14 @@ func NewRouter(
 	piiConfigs store.ProjectPIIConfigStore,
 	spanFeedback store.SpanFeedbackStore,
 	payloads store.PayloadStore,
+	playground store.PlaygroundStore,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
 	corsAllowedOrigins []string,
 	corsDevMode bool,
 	providerKeys eval.ProviderKeys,
+	llm llmclient.Client,
+	pricingTable *pricing.Table,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -52,6 +57,7 @@ func NewRouter(
 		httputil.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
+	healthHandler := handler.NewHealthHandler(spans)
 	projectHandler := handler.NewProjectHandler(projects)
 	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals, payloads)
 	topologyHandler := handler.NewTopologyHandler(topology)
@@ -66,7 +72,19 @@ func NewRouter(
 	searchHandler := handler.NewSearchHandler(search)
 	settingsHandler := handler.NewSettingsHandler(piiConfigs, pgPool)
 	feedbackWriteLimiter := middleware.NewRateLimiter(10, time.Minute)
+	playgroundRunLimiter := middleware.NewRateLimiter(20, time.Minute)
 	spanFeedbackHandler := handler.NewSpanFeedbackHandler(spanFeedback)
+
+	var playgroundHandler *handler.PlaygroundHandler
+	var modelsHandler *handler.ModelsHandler
+	if playground != nil && llm != nil && pricingTable != nil {
+		playgroundHandler = handler.NewPlaygroundHandler(playground, llm, pricingTable)
+		modelsHandler = handler.NewModelsHandler(pricingTable, llmclient.ProviderKeys{
+			Anthropic: providerKeys.Anthropic,
+			OpenAI:    providerKeys.OpenAI,
+			Google:    providerKeys.Google,
+		})
+	}
 
 	bearerAuth := middleware.BearerAuth(projects)
 	adminKeyAuth := middleware.AdminKeyAuth(projects)
@@ -134,6 +152,21 @@ func NewRouter(
 
 			// Settings (read) — authenticated via BearerAuth inherited from parent route group.
 			r.Get("/settings", settingsHandler.GetSettings)
+			r.Get("/health", healthHandler.Status)
+
+			// Prompt Playground — enabled only when pricing table + LLM client are configured.
+			if playgroundHandler != nil {
+				r.Route("/playground", func(r chi.Router) {
+					r.Post("/sessions", playgroundHandler.CreateSession)
+					r.Get("/sessions", playgroundHandler.ListSessions)
+					r.Get("/sessions/{sessionID}", playgroundHandler.GetSession)
+					r.Delete("/sessions/{sessionID}", playgroundHandler.DeleteSession)
+					r.Put("/sessions/{sessionID}/variants/{variantID}", playgroundHandler.UpdateVariant)
+					// Tighter rate limit on /run (spends real money).
+					r.With(playgroundRunLimiter.Middleware()).
+						Post("/sessions/{sessionID}/variants/{variantID}/run", playgroundHandler.RunVariant)
+				})
+			}
 		})
 
 		// Settings (write) — authenticated via AdminKeyAuth (separate from SDK Bearer token).
@@ -160,6 +193,11 @@ func NewRouter(
 				topologyHandler.Routes(r)
 			})
 		})
+
+		// Models endpoint — lists available models for the Playground picker.
+		if modelsHandler != nil {
+			r.Get("/models", modelsHandler.List)
+		}
 
 		// WebSocket — real-time budget alerts (validates token inline)
 		r.Get("/ws/alerts", hub.ServeWS)

@@ -374,6 +374,14 @@ export interface SearchResponse {
   query: string;
 }
 
+// ── Health ────────────────────────────────────────────────────────────────────
+
+export interface ProjectHealth {
+  CollectorReachable: boolean;
+  LastSpanAt: string | null;
+  SpanCount: number;
+}
+
 // ── PII / Settings ────────────────────────────────────────────────────────────
 
 export interface PIICustomRule {
@@ -429,4 +437,62 @@ export interface FeedbackRequest {
   run_id: string;
   rating: "good" | "bad";
   corrected_output?: string;
+}
+
+// ── Prompt Playground ────────────────────────────────────────────────────────
+
+export interface PlaygroundMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+export interface PlaygroundExecution {
+  ID: string;
+  VariantID: string;
+  Output: string | null;
+  InputTokens: number;
+  OutputTokens: number;
+  CostUSD: number;
+  LatencyMS: number;
+  Error: string | null;
+  CreatedAt: string;
+}
+
+export interface PlaygroundVariant {
+  ID: string;
+  SessionID: string;
+  Label: string;
+  ModelID: string;
+  System: string;
+  Messages: PlaygroundMessage[];
+  Temperature: number | null;
+  MaxTokens: number | null;
+  Executions: PlaygroundExecution[] | null;
+  UpdatedAt: string;
+}
+
+export interface PlaygroundSession {
+  ID: string;
+  ProjectID: string;
+  Name: string;
+  SourceSpanID: string | null;
+  SourceRunID: string | null;
+  Variants: PlaygroundVariant[] | null;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export interface PlaygroundSessionsListResponse {
+  sessions: PlaygroundSession[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ModelInfo {
+  model_id: string;
+  provider: string;
+  input_per_million: number;
+  output_per_million: number;
+  available: boolean;
 }
