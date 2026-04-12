@@ -205,6 +205,18 @@ type AnalyticsStore interface {
 	ModelStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ModelStats, error)
 }
 
+// ExportStore supports streaming data export from ClickHouse.
+type ExportStore interface {
+	// CountSpans returns the number of spans matching the export filters.
+	CountSpans(ctx context.Context, params *domain.ExportParams) (int64, error)
+	// ExportSpans calls fn for each span row matching the filters. Streams results.
+	ExportSpans(ctx context.Context, params *domain.ExportParams, fn func(*domain.ExportSpanRow) error) error
+	// CountRuns returns the number of runs matching the export filters.
+	CountRuns(ctx context.Context, params *domain.ExportParams) (int64, error)
+	// ExportRuns calls fn for each run row matching the filters.
+	ExportRuns(ctx context.Context, params *domain.ExportParams, fn func(*domain.ExportRunRow) error) error
+}
+
 // PlaygroundStore manages prompt playground sessions, variants, and executions in Postgres.
 type PlaygroundStore interface {
 	CreateSession(ctx context.Context, s *domain.PlaygroundSession) error

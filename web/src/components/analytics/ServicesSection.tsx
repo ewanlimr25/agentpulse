@@ -7,6 +7,7 @@ import type { AnalyticsWindow } from "@/lib/types";
 import { ToolAnalyticsTable } from "./ToolAnalyticsTable";
 import { AgentCostTable } from "./AgentCostTable";
 import { TopToolsCharts } from "./TopToolsCharts";
+import { ExportButton } from "@/components/export/ExportButton";
 
 interface Props {
   projectId: string;
@@ -45,6 +46,11 @@ export function ServicesSection({ projectId }: Props) {
             {w.label}
           </button>
         ))}
+        <ExportButton
+          projectId={projectId}
+          exportType="analytics"
+          params={{ window }}
+        />
       </div>
 
       <TopToolsCharts tools={tools} />

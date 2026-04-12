@@ -37,6 +37,7 @@ func NewRouter(
 	spanFeedback store.SpanFeedbackStore,
 	payloads store.PayloadStore,
 	playground store.PlaygroundStore,
+	exports store.ExportStore,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
 	corsAllowedOrigins []string,
@@ -75,6 +76,8 @@ func NewRouter(
 	feedbackWriteLimiter := middleware.NewRateLimiter(10, time.Minute)
 	playgroundRunLimiter := middleware.NewRateLimiter(20, time.Minute)
 	spanFeedbackHandler := handler.NewSpanFeedbackHandler(spanFeedback)
+
+	exportHandler := handler.NewExportHandler(exports, analytics)
 
 	var playgroundHandler *handler.PlaygroundHandler
 	var modelsHandler *handler.ModelsHandler
@@ -141,6 +144,10 @@ func NewRouter(
 			})
 
 			r.Get("/search", searchHandler.Search)
+
+			r.Route("/export", func(r chi.Router) {
+				exportHandler.Routes(r)
+			})
 
 			// Span feedback — human-in-the-loop ratings.
 			// POST uses a tighter write limiter (10/min) to prevent bulk phantom writes.

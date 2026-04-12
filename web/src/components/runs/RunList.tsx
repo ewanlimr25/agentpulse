@@ -7,6 +7,7 @@ import { runsApi } from "@/lib/api";
 import type { Run } from "@/lib/types";
 import { RunRow } from "./RunRow";
 import { RunFilterBar, type StatusFilter, type SortBy } from "./RunFilterBar";
+import { ExportButton } from "@/components/export/ExportButton";
 
 const PAGE_SIZE = 20;
 
@@ -121,6 +122,7 @@ export function RunList({ projectId }: Props) {
               of <span className="text-[var(--text)]">{total}</span> runs
             </p>
           )}
+          <ExportButton projectId={projectId} exportType="runs" />
           <button
             type="button"
             onClick={handleCompareToggle}

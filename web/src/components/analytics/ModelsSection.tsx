@@ -7,6 +7,7 @@ import type { AnalyticsWindow } from "@/lib/types";
 import { ModelComparisonChart } from "./ModelComparisonChart";
 import { ModelStatsTable } from "./ModelStatsTable";
 import { ModelCostProjection } from "./ModelCostProjection";
+import { ExportButton } from "@/components/export/ExportButton";
 
 interface Props {
   projectId: string;
@@ -45,6 +46,11 @@ export function ModelsSection({ projectId }: Props) {
             {w.label}
           </button>
         ))}
+        <ExportButton
+          projectId={projectId}
+          exportType="analytics"
+          params={{ window }}
+        />
       </div>
 
       <ModelComparisonChart models={models} />

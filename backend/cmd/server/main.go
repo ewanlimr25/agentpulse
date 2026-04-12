@@ -62,6 +62,7 @@ func main() {
 	budgetStore := pgstore.NewBudgetStore(pgPool)
 	evalStore := chstore.NewEvalStore(chConn)
 	analyticsStore := chstore.NewAnalyticsStore(chConn)
+	exportStore := chstore.NewExportStore(chConn)
 	evalJobStore := pgstore.NewEvalJobStore(pgPool)
 	evalConfigStore := pgstore.NewEvalConfigStore(pgPool)
 	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
@@ -139,7 +140,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
