@@ -201,6 +201,8 @@ type AnalyticsStore interface {
 	ToolStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ToolStats, error)
 	// AgentCostStats returns per-agent cost breakdown within windowSeconds.
 	AgentCostStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.AgentCostStats, error)
+	// ModelStats returns per-model aggregates for llm.call spans within windowSeconds.
+	ModelStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ModelStats, error)
 }
 
 // PlaygroundStore manages prompt playground sessions, variants, and executions in Postgres.

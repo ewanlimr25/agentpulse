@@ -27,10 +27,10 @@ Gaps prioritized by how much they'd matter to someone running OpenClaw or simila
 - ~~A "currently running" indicator on the runs list~~
 - ~~Real-time cost counter ticking up during execution~~
 
-#### 4. No Model Cost/Performance Comparison Dashboard
-The services page shows tool stats and agent cost breakdown, but there's no view that answers "which model should I use?" Individual developers constantly experiment with models. They need:
-- A model-level breakdown: cost, latency, quality score, token efficiency — grouped by model ID
-- A "what if I switched from Opus to Sonnet" cost projection
+#### ~~4. No Model Cost/Performance Comparison Dashboard~~ ✓
+~~The services page shows tool stats and agent cost breakdown, but there's no view that answers "which model should I use?" Individual developers constantly experiment with models. They need:~~
+- ~~A model-level breakdown: cost, latency, quality score, token efficiency — grouped by model ID~~
+- ~~A "what if I switched from Opus to Sonnet" cost projection~~
 
 #### 5. No Data Export
 There's no way to export runs, traces, or analytics as CSV/JSON. A solo developer doing analysis in a notebook, or wanting to share results, needs this. The replay bundle is close but it's for re-execution, not analysis.
@@ -83,7 +83,7 @@ For someone running this on their laptop long-term, disk space matters.
 1. ~~Prompt playground — edit & re-send from span detail~~ ✓
 2. Run tagging & annotations
 3. ~~Live run streaming view~~ ✓
-4. Model comparison dashboard
+4. ~~Model comparison dashboard~~ ✓
 
 **Medium priority** (developer experience):
 5. Onboarding empty state / getting started wizard

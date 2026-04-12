@@ -22,6 +22,7 @@ import {
   Layers,
   FlaskConical,
   Beaker,
+  BarChart3,
   DollarSign,
   Bell,
   Users,
@@ -44,6 +45,7 @@ export const PROJECT_NAV: NavSection[] = [
     label: "Analyze",
     items: [
       { label: "Evals", href: (id) => `/projects/${id}/evals`, icon: FlaskConical },
+      { label: "Models", href: (id) => `/projects/${id}/models`, icon: BarChart3 },
       { label: "Playground", href: (id) => `/projects/${id}/playground`, icon: Beaker },
     ],
   },

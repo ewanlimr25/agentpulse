@@ -107,3 +107,58 @@ func (s *AnalyticsStore) AgentCostStats(ctx context.Context, projectID string, w
 	}
 	return results, nil
 }
+
+const modelStatsQuery = `
+SELECT
+    model_id,
+    count()                              AS call_count,
+    countIf(status_code = 'ERROR')       AS error_count,
+    avg(duration_ns) / 1e6              AS avg_latency_ms,
+    quantile(0.95)(duration_ns) / 1e6   AS p95_latency_ms,
+    sum(cost_usd)                        AS total_cost_usd,
+    sum(input_tokens)                    AS input_tokens,
+    sum(output_tokens)                   AS output_tokens
+FROM spans
+WHERE project_id = ?
+  AND agent_span_kind = 'llm.call'
+  AND model_id != ''
+  AND start_time >= now() - INTERVAL ? SECOND
+GROUP BY model_id
+ORDER BY total_cost_usd DESC
+`
+
+func (s *AnalyticsStore) ModelStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ModelStats, error) {
+	rows, err := s.conn.Query(ctx, modelStatsQuery, projectID, windowSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("analytics model_stats query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*domain.ModelStats
+	for rows.Next() {
+		m := &domain.ModelStats{}
+		if err := rows.Scan(
+			&m.ModelID,
+			&m.CallCount,
+			&m.ErrorCount,
+			&m.AvgLatencyMS,
+			&m.P95LatencyMS,
+			&m.TotalCostUSD,
+			&m.InputTokens,
+			&m.OutputTokens,
+		); err != nil {
+			return nil, fmt.Errorf("analytics model_stats scan: %w", err)
+		}
+		// Derived fields
+		if m.CallCount > 0 {
+			m.ErrorRate = float64(m.ErrorCount) / float64(m.CallCount) * 100
+			m.AvgCostPerCall = m.TotalCostUSD / float64(m.CallCount)
+		}
+		m.TotalTokens = m.InputTokens + m.OutputTokens
+		if m.TotalTokens > 0 {
+			m.CostPerMillionTokens = m.TotalCostUSD / float64(m.TotalTokens) * 1_000_000
+		}
+		results = append(results, m)
+	}
+	return results, rows.Err()
+}

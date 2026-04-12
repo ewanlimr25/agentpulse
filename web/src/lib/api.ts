@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -201,6 +201,10 @@ export const analyticsApi = {
   agentCostStats: (projectId: string, window: AnalyticsWindow = "24h") =>
     apiFetch<{ agents: AgentCostStats[]; window: string }>(
       `/api/v1/projects/${projectId}/analytics/agents?window=${window}`
+    ),
+  modelStats: (projectId: string, window: AnalyticsWindow = "24h") =>
+    apiFetch<ModelStatsResponse>(
+      `/api/v1/projects/${projectId}/analytics/models?window=${window}`
     ),
 };
 

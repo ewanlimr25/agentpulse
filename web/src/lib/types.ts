@@ -421,6 +421,35 @@ export interface AgentCostStats {
   AvgCostPerCall: number;
 }
 
+export interface ModelStats {
+  ModelID: string;
+  Provider: string;
+  CallCount: number;
+  ErrorCount: number;
+  ErrorRate: number;          // 0–100
+  AvgLatencyMS: number;
+  P95LatencyMS: number;
+  TotalCostUSD: number;
+  AvgCostPerCall: number;
+  InputTokens: number;
+  OutputTokens: number;
+  TotalTokens: number;
+  CostPerMillionTokens: number;
+}
+
+export interface ModelPricing {
+  [modelId: string]: {
+    input_per_million: number;
+    output_per_million: number;
+  };
+}
+
+export interface ModelStatsResponse {
+  models: ModelStats[];
+  window: string;
+  pricing: ModelPricing;
+}
+
 // ── Human-in-the-Loop Eval Feedback ──────────────────────────────────────────
 
 export interface SpanFeedback {

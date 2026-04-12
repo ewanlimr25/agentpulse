@@ -66,7 +66,7 @@ func NewRouter(
 	evalHandler := handler.NewEvalHandler(evals, spanFeedback)
 	evalConfigHandler := handler.NewEvalConfigHandlerWithKeys(evalConfigs, providerKeys)
 	alertHandler := handler.NewAlertRuleHandler(alertRules)
-	analyticsHandler := handler.NewAnalyticsHandler(analytics)
+	analyticsHandler := handler.NewAnalyticsHandler(analytics, pricingTable)
 	loopHandler := handler.NewLoopHandler(loops)
 	sessionHandler := handler.NewSessionHandler(sessions, runs)
 	userHandler := handler.NewUserHandler(users)
