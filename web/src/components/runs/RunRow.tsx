@@ -2,6 +2,7 @@ import Link from "next/link";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { LoopBadge } from "@/components/loops/LoopBadge";
 import { SessionBadge } from "@/components/sessions/SessionBadge";
+import { LiveIndicator } from "./LiveIndicator";
 import type { Run } from "@/lib/types";
 
 export function formatDuration(ms: number) {
@@ -29,6 +30,8 @@ export function RunRow({ run, projectId, selectable, selected, onToggle }: RunRo
       className={`flex items-center gap-4 px-5 py-4 border bg-[var(--surface)] rounded-xl hover:border-indigo-600 transition-colors group ${
         selected
           ? "border-indigo-500 ring-1 ring-indigo-500"
+          : run.IsActive
+          ? "border-green-700/50"
           : "border-[var(--border)]"
       }`}
     >
@@ -47,6 +50,7 @@ export function RunRow({ run, projectId, selectable, selected, onToggle }: RunRo
         />
       )}
       <StatusBadge status={run.Status === "ok" ? "ok" : "error"} />
+      {run.IsActive && <LiveIndicator size="sm" />}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-mono text-[var(--text-muted)] truncate">{run.RunID}</p>
         <p className="text-xs text-[var(--text-muted)]">

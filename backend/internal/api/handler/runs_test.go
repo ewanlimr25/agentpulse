@@ -53,6 +53,9 @@ func (f *fakeRunStore) GetProjectID(_ context.Context, runID string) (string, er
 	}
 	return pid, nil
 }
+func (f *fakeRunStore) ListActiveRunIDs(_ context.Context, _ string, _ int) (map[string]bool, error) {
+	return nil, nil
+}
 
 type fakeSpanStore struct {
 	spans []*domain.Span
@@ -66,6 +69,9 @@ func (f *fakeSpanStore) GetByID(_ context.Context, _, _ string) (*domain.Span, e
 	return nil, chstore.ErrSpanNotFound
 }
 func (f *fakeSpanStore) LatestSpanTime(_ context.Context, _ string) (*time.Time, error) {
+	return nil, nil
+}
+func (f *fakeSpanStore) ListByRunSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
 	return nil, nil
 }
 

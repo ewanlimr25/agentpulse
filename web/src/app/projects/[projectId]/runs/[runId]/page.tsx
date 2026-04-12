@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { use, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi, evalsApi, loopsApi } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -10,6 +10,9 @@ import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
 import { SpanDetailDrawer } from "@/components/spans/SpanDetailDrawer";
 import { LoopBanner } from "@/components/loops/LoopBanner";
 import { ReplayModal } from "@/components/runs/ReplayModal";
+import { LiveIndicator } from "@/components/runs/LiveIndicator";
+import { LiveCostCounter } from "@/components/runs/LiveCostCounter";
+import { useRunSSE } from "@/hooks/useRunSSE";
 import type { Span, SpanEval, SpanFeedback } from "@/lib/types";
 import { formatDurationNS } from "@/lib/format";
 
@@ -74,6 +77,7 @@ export default function RunPage({
   const { projectId, runId } = use(params);
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   const [replayOpen, setReplayOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: run } = useQuery({
     queryKey: ["run", runId],
@@ -100,6 +104,30 @@ export default function RunPage({
     queryFn: () => loopsApi.listByRun(runId, projectId),
   });
 
+  // Enable SSE only when the run is known to be active.
+  const sseEnabled = run?.IsActive === true;
+  const {
+    spans: liveSpans,
+    run: liveRun,
+    isLive,
+    isConnected,
+  } = useRunSSE(runId, projectId, sseEnabled);
+
+  // When SSE stream ends (was live, now finished), invalidate queries so
+  // React Query fetches the final settled data.
+  const wasLiveRef = useRef(false);
+  useEffect(() => {
+    if (wasLiveRef.current && !isLive) {
+      queryClient.invalidateQueries({ queryKey: ["run", runId] });
+      queryClient.invalidateQueries({ queryKey: ["spans", runId] });
+    }
+    wasLiveRef.current = isLive;
+  }, [isLive, runId, queryClient]);
+
+  // Use SSE spans/run when live, React Query data when not.
+  const displaySpans = isLive && liveSpans.length > 0 ? liveSpans : (spans ?? []);
+  const displayRun = isLive && liveRun ? liveRun : run;
+
   // Build a map from spanId → all evals for that span (one per eval type).
   const evalsBySpan = new Map<string, SpanEval[]>();
   for (const e of evals ?? []) {
@@ -107,12 +135,12 @@ export default function RunPage({
     evalsBySpan.set(e.SpanID, [...existing, e]);
   }
 
-  const selectedSpan = spans?.find((s) => s.SpanID === selectedSpanId);
+  const selectedSpan = displaySpans.find((s) => s.SpanID === selectedSpanId);
   const selectedEvals = selectedSpanId ? (evalsBySpan.get(selectedSpanId) ?? []) : [];
 
   // Detect if any span carries a replay-source attribute, surfacing a banner
   // that links back to the original run.
-  const replaySourceRunId = spans?.find(
+  const replaySourceRunId = displaySpans.find(
     (s) => s.Attributes?.["agentpulse.replay_source_run_id"]
   )?.Attributes?.["agentpulse.replay_source_run_id"];
 
@@ -129,8 +157,12 @@ export default function RunPage({
 
         <div className="flex items-center gap-4 mb-6">
           <h1 className="text-xl font-bold text-[var(--text)] font-mono">{runId}</h1>
-          {run && (
-            <StatusBadge status={run.Status === "ok" ? "ok" : "error"} size="md" />
+          {isLive && <LiveIndicator size="md" />}
+          {isConnected && !isLive && (
+            <span className="text-xs text-[var(--text-muted)]">connecting...</span>
+          )}
+          {displayRun && (
+            <StatusBadge status={displayRun.Status === "ok" ? "ok" : "error"} size="md" />
           )}
           <button
             onClick={() => setReplayOpen(true)}
@@ -174,28 +206,37 @@ export default function RunPage({
 
         <LoopBanner loops={loops ?? []} />
 
-        {run && (
+        {displayRun && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
             <MetricCard
               label="Duration"
-              value={run.DurationMS < 1000 ? `${run.DurationMS.toFixed(0)}ms` : `${(run.DurationMS / 1000).toFixed(1)}s`}
+              value={displayRun.DurationMS < 1000 ? `${displayRun.DurationMS.toFixed(0)}ms` : `${(displayRun.DurationMS / 1000).toFixed(1)}s`}
             />
-            <MetricCard label="Cost" value={`$${run.TotalCostUSD.toFixed(4)}`} accent />
+            {isLive ? (
+              <div className="rounded-xl border border-indigo-700 bg-indigo-950/40 p-4 flex flex-col gap-1">
+                <p className="text-xs text-[var(--text-muted)] uppercase tracking-wide">Cost</p>
+                <p className="text-2xl font-semibold tabular-nums text-indigo-300">
+                  <LiveCostCounter costUSD={displayRun.TotalCostUSD} isLive={isLive} />
+                </p>
+              </div>
+            ) : (
+              <MetricCard label="Cost" value={`$${displayRun.TotalCostUSD.toFixed(4)}`} accent />
+            )}
             <MetricCard
               label="Tokens"
-              value={run.TotalTokens.toLocaleString()}
-              sub={`${run.TotalInputTokens.toLocaleString()} in / ${run.TotalOutputTokens.toLocaleString()} out`}
+              value={displayRun.TotalTokens.toLocaleString()}
+              sub={`${displayRun.TotalInputTokens.toLocaleString()} in / ${displayRun.TotalOutputTokens.toLocaleString()} out`}
             />
             <MetricCard
               label="Spans"
-              value={run.SpanCount}
-              sub={`${run.LLMCallCount} LLM · ${run.ToolCallCount} tool`}
+              value={displayRun.SpanCount}
+              sub={`${displayRun.LLMCallCount} LLM · ${displayRun.ToolCallCount} tool`}
             />
-            {(run.StreamingSpanCount ?? 0) > 0 && (
+            {(displayRun.StreamingSpanCount ?? 0) > 0 && (
               <MetricCard
                 label="TTFT p50"
-                value={`${run.TtftP50Ms?.toFixed(0) ?? 0}ms`}
-                sub={`p95: ${run.TtftP95Ms?.toFixed(0) ?? 0}ms · ${run.StreamingSpanCount} streaming spans`}
+                value={`${displayRun.TtftP50Ms?.toFixed(0) ?? 0}ms`}
+                sub={`p95: ${displayRun.TtftP95Ms?.toFixed(0) ?? 0}ms · ${displayRun.StreamingSpanCount} streaming spans`}
               />
             )}
           </div>
@@ -203,10 +244,10 @@ export default function RunPage({
 
         <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Spans</h2>
 
-        {spansLoading && <div className="text-[var(--text-muted)]">Loading spans...</div>}
+        {spansLoading && !isLive && <div className="text-[var(--text-muted)]">Loading spans...</div>}
 
         <div className="flex flex-col gap-2">
-          {spans?.map((s) => (
+          {displaySpans.map((s) => (
             <SpanRow
               key={s.SpanID}
               span={s}
@@ -214,7 +255,7 @@ export default function RunPage({
               onClick={() => setSelectedSpanId(s.SpanID)}
             />
           ))}
-          {!spansLoading && spans?.length === 0 && (
+          {!spansLoading && !isLive && displaySpans.length === 0 && (
             <div className="text-[var(--text-muted)] text-center py-8">No spans found.</div>
           )}
         </div>
@@ -231,7 +272,7 @@ export default function RunPage({
         span={selectedSpan}
         evals={selectedEvals}
         evalGroups={evalGroups}
-        runStartTime={run?.StartTime ?? ""}
+        runStartTime={displayRun?.StartTime ?? ""}
         onClose={() => setSelectedSpanId(null)}
         projectId={projectId}
         runId={runId}

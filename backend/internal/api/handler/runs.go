@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -67,6 +68,14 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Annotate runs with active status (span activity within last 30s)
+	activeMap, err := h.runs.ListActiveRunIDs(r.Context(), projectID, 30)
+	if err == nil {
+		for _, run := range runs {
+			run.IsActive = activeMap[run.RunID]
+		}
+	}
+
 	httputil.JSON(w, http.StatusOK, map[string]any{
 		"runs":   runs,
 		"limit":  limit,
@@ -89,6 +98,11 @@ func (h *RunHandler) Get(w http.ResponseWriter, r *http.Request) {
 	loopMap, err := h.loops.HasLoops(r.Context(), []string{runID})
 	if err == nil {
 		run.LoopDetected = loopMap[runID]
+	}
+
+	// Mark run as active if it ended recently (within last 30s)
+	if !run.EndTime.IsZero() && time.Since(run.EndTime) < 30*time.Second {
+		run.IsActive = true
 	}
 
 	httputil.JSON(w, http.StatusOK, run)

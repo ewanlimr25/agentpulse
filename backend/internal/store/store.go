@@ -21,6 +21,9 @@ type SpanStore interface {
 	// or nil if no spans exist. The query is bounded to the last 24 hours to avoid
 	// full-table scans.
 	LatestSpanTime(ctx context.Context, projectID string) (*time.Time, error)
+	// ListByRunSince returns spans for a run with start_time > since, ordered by start_time ASC.
+	// Bounded to _date >= today()-1 to avoid scanning historical partitions.
+	ListByRunSince(ctx context.Context, runID string, since time.Time) ([]*domain.Span, error)
 }
 
 // RunStore queries per-run aggregated metrics from ClickHouse.
@@ -40,6 +43,9 @@ type RunStore interface {
 	// Used by RunAuth middleware to resolve ownership without fetching full run metrics.
 	// Returns an error if the run does not exist.
 	GetProjectID(ctx context.Context, runID string) (string, error)
+	// ListActiveRunIDs returns a set of run IDs that have had span activity within thresholdSeconds.
+	// Queries spans directly (not the run_metrics view, which is a plain VIEW that re-aggregates).
+	ListActiveRunIDs(ctx context.Context, projectID string, thresholdSeconds int) (map[string]bool, error)
 }
 
 // SessionStore reads session aggregates from the ClickHouse session_agg MV.

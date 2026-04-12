@@ -60,6 +60,7 @@ func NewRouter(
 	healthHandler := handler.NewHealthHandler(spans)
 	projectHandler := handler.NewProjectHandler(projects)
 	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals, payloads)
+	liveHandler := handler.NewLiveHandler(spans, runs)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
 	evalHandler := handler.NewEvalHandler(evals, spanFeedback)
@@ -189,6 +190,7 @@ func NewRouter(
 			r.Get("/evals", evalHandler.ListByRun)
 			r.Get("/evals/grouped", evalHandler.ListByRunGrouped)
 			r.Get("/loops", loopHandler.ListByRun)
+			r.Get("/live", liveHandler.StreamRunSpans)
 			r.Route("/topology", func(r chi.Router) {
 				topologyHandler.Routes(r)
 			})

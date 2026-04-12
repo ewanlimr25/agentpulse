@@ -52,4 +52,8 @@ type Run struct {
 	TtftP50Ms          float64
 	TtftP95Ms          float64
 	StreamingSpanCount uint64
+
+	// IsActive is true when the run has had span activity within the last 30 seconds.
+	// Populated at the API layer; not stored in ClickHouse.
+	IsActive bool
 }

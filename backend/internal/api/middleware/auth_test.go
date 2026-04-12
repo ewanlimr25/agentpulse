@@ -158,6 +158,9 @@ func (m *mockRunStore) GetProjectID(_ context.Context, runID string) (string, er
 	}
 	return pid, nil
 }
+func (m *mockRunStore) ListActiveRunIDs(_ context.Context, _ string, _ int) (map[string]bool, error) {
+	return nil, nil
+}
 
 // makeRunAuthHandler wraps a 200 OK handler behind RunAuth on a Chi route
 // that exposes {runID}.

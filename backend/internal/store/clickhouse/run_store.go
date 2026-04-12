@@ -179,6 +179,35 @@ func (s *RunStore) ListBySession(ctx context.Context, projectID, sessionID strin
 	return runs, rows.Err()
 }
 
+const listActiveRunIDsQuery = `
+SELECT DISTINCT run_id
+FROM spans
+WHERE project_id = ?
+  AND _date >= today() - 1
+  AND end_time >= now() - INTERVAL ? SECOND
+`
+
+func (s *RunStore) ListActiveRunIDs(ctx context.Context, projectID string, thresholdSeconds int) (map[string]bool, error) {
+	rows, err := s.conn.Query(ctx, listActiveRunIDsQuery, projectID, thresholdSeconds)
+	if err != nil {
+		return nil, fmt.Errorf("run_store list_active_run_ids query: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]bool)
+	for rows.Next() {
+		var runID string
+		if err := rows.Scan(&runID); err != nil {
+			return nil, fmt.Errorf("run_store list_active_run_ids scan: %w", err)
+		}
+		result[runID] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("run_store list_active_run_ids rows: %w", err)
+	}
+	return result, nil
+}
+
 func scanRun(rows driver.Rows) (*domain.Run, error) {
 	r := &domain.Run{}
 	var startTime, endTime time.Time

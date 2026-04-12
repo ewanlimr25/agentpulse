@@ -29,6 +29,9 @@ func (m *healthSpanStore) GetByID(_ context.Context, _, _ string) (*domain.Span,
 func (m *healthSpanStore) LatestSpanTime(_ context.Context, _ string) (*time.Time, error) {
 	return m.lastSpanAt, m.err
 }
+func (m *healthSpanStore) ListByRunSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
+	return nil, nil
+}
 
 func ptr[T any](v T) *T { return &v }
 

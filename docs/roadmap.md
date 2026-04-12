@@ -21,27 +21,11 @@ The core observability loop is solid for a solo developer running agents:
 
 Gaps prioritized by how much they'd matter to someone running OpenClaw or similar:
 
-#### 1. No Onboarding / Empty State Experience
-There's no quickstart wizard, setup guide in the UI, or empty-state guidance. A solo developer hitting the dashboard for the first time sees "No runs yet." with no next steps. They need:
-- A "Getting Started" panel showing: install SDK → set env vars → run first agent → see data appear
-- Copy-pasteable snippets for their specific framework
-- A health check indicator showing whether the collector is receiving data
-
-#### 2. No Live/Streaming Run View
-A developer watching an agent execute in real-time has no way to see spans arriving as they happen. The current UI is entirely retrospective — you wait for a run to finish, then inspect it. For the OpenClaw scenario, they'd want:
-- A live tail showing spans as they stream in during an active run
-- A "currently running" indicator on the runs list
-- Real-time cost counter ticking up during execution
-
-#### 3. No Prompt Playground / Experiment Mode
-When a developer sees a bad LLM output in the trace, the natural next action is "let me tweak this prompt and retry." There's no way to:
-- Take a span's prompt, edit it, and re-send it to the model
-- A/B test prompt variants
-- Save prompt versions and compare outputs
-
-This is probably the #1 feature Langfuse users love. It closes the observe→improve loop.
-
-> **Implementation plan:** [`.claude/plan/prompt-playground.md`](../.claude/plan/prompt-playground.md)
+#### ~~2. No Live/Streaming Run View~~ ✓
+~~A developer watching an agent execute in real-time has no way to see spans arriving as they happen. The current UI is entirely retrospective — you wait for a run to finish, then inspect it. For the OpenClaw scenario, they'd want:~~
+- ~~A live tail showing spans as they stream in during an active run~~
+- ~~A "currently running" indicator on the runs list~~
+- ~~Real-time cost counter ticking up during execution~~
 
 #### 4. No Model Cost/Performance Comparison Dashboard
 The services page shows tool stats and agent cost breakdown, but there's no view that answers "which model should I use?" Individual developers constantly experiment with models. They need:

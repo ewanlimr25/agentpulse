@@ -39,6 +39,7 @@ export interface Run {
   TtftP50Ms?: number;
   TtftP95Ms?: number;
   StreamingSpanCount?: number;
+  IsActive?: boolean;
 }
 
 export interface Session {
