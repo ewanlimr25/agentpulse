@@ -32,6 +32,12 @@ func (m *healthSpanStore) LatestSpanTime(_ context.Context, _ string) (*time.Tim
 func (m *healthSpanStore) ListByRunSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
 	return nil, nil
 }
+func (m *healthSpanStore) ListByProjectSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
+	return nil, nil
+}
+func (m *healthSpanStore) CountSince(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
 
 func ptr[T any](v T) *T { return &v }
 

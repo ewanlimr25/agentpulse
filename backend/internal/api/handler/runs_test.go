@@ -74,6 +74,12 @@ func (f *fakeSpanStore) LatestSpanTime(_ context.Context, _ string) (*time.Time,
 func (f *fakeSpanStore) ListByRunSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
 	return nil, nil
 }
+func (f *fakeSpanStore) ListByProjectSince(_ context.Context, _ string, _ time.Time) ([]*domain.Span, error) {
+	return nil, nil
+}
+func (f *fakeSpanStore) CountSince(_ context.Context, _ string, _ time.Duration) (int64, error) {
+	return 0, nil
+}
 
 type fakeTopologyStore struct {
 	topology *domain.Topology

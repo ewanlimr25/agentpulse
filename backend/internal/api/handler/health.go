@@ -34,9 +34,15 @@ func (h *HealthHandler) Status(w http.ResponseWriter, r *http.Request) {
 
 	reachable := lastSpanAt != nil && time.Since(*lastSpanAt) < 5*time.Minute
 
+	spansPerMinute, err := h.spans.CountSince(r.Context(), projectID, time.Minute)
+	if err != nil {
+		spansPerMinute = 0 // non-fatal; degrade gracefully
+	}
+
 	httputil.JSON(w, http.StatusOK, domain.ProjectHealth{
 		CollectorReachable: reachable,
 		LastSpanAt:         lastSpanAt,
-		SpanCount:          0, // SpanCount is informational; populated separately if needed
+		SpanCount:          0,
+		SpansPerMinute:     spansPerMinute,
 	})
 }

@@ -161,6 +161,7 @@ func NewRouter(
 			// Settings (read) — authenticated via BearerAuth inherited from parent route group.
 			r.Get("/settings", settingsHandler.GetSettings)
 			r.Get("/health", healthHandler.Status)
+			r.Get("/live", liveHandler.StreamProjectSpans)
 
 			// Prompt Playground — enabled only when pricing table + LLM client are configured.
 			if playgroundHandler != nil {

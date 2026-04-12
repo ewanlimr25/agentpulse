@@ -194,3 +194,96 @@ func (h *LiveHandler) StreamRunSpans(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// StreamProjectSpans streams new spans for ALL runs in a project via SSE.
+// Route: GET /api/v1/projects/{projectID}/live
+//
+// SSE event types:
+//   - event: span     — single new span as JSON object (incremental)
+//   - : keepalive     — SSE comment sent every 15s to prevent proxy timeouts
+//
+// Unlike StreamRunSpans, this endpoint never emits a "done" event — the
+// project stream is open-ended and only closes when the client disconnects.
+func (h *LiveHandler) StreamProjectSpans(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		httputil.Error(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	rc := http.NewResponseController(w)
+
+	writeSSE := func(event, data string) error {
+		if err := rc.SetWriteDeadline(time.Now().Add(35 * time.Second)); err != nil {
+			slog.Warn("live_handler: could not set write deadline", "err", err)
+		}
+		if event != "" {
+			if _, err := fmt.Fprintf(w, "event: %s\n", event); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	writeKeepAlive := func() error {
+		if err := rc.SetWriteDeadline(time.Now().Add(35 * time.Second)); err != nil {
+			slog.Warn("live_handler: could not set write deadline", "err", err)
+		}
+		if _, err := fmt.Fprintf(w, ": keepalive\n\n"); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+
+	ctx := r.Context()
+	lastSeen := time.Now()
+
+	pollTick := time.NewTicker(2 * time.Second)
+	keepaliveTick := time.NewTicker(15 * time.Second)
+	defer pollTick.Stop()
+	defer keepaliveTick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-keepaliveTick.C:
+			if err := writeKeepAlive(); err != nil {
+				return
+			}
+
+		case <-pollTick.C:
+			newSpans, err := h.spans.ListByProjectSince(ctx, projectID, lastSeen)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return
+				}
+				slog.Warn("live_handler: project poll failed", "project_id", projectID, "err", err)
+				continue
+			}
+
+			for _, sp := range newSpans {
+				spJSON, _ := json.Marshal(sp)
+				if err := writeSSE("span", string(spJSON)); err != nil {
+					return
+				}
+				if sp.StartTime.After(lastSeen) {
+					lastSeen = sp.StartTime
+				}
+			}
+		}
+	}
+}

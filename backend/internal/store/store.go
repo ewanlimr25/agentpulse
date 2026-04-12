@@ -24,6 +24,12 @@ type SpanStore interface {
 	// ListByRunSince returns spans for a run with start_time > since, ordered by start_time ASC.
 	// Bounded to _date >= today()-1 to avoid scanning historical partitions.
 	ListByRunSince(ctx context.Context, runID string, since time.Time) ([]*domain.Span, error)
+	// ListByProjectSince returns spans for a project with start_time > since, ordered by start_time ASC.
+	// Bounded to _date >= today()-1 to avoid scanning historical partitions.
+	ListByProjectSince(ctx context.Context, projectID string, since time.Time) ([]*domain.Span, error)
+	// CountSince returns the number of spans for a project with start_time > now()-window.
+	// Used for spans/min rate calculation in the health endpoint.
+	CountSince(ctx context.Context, projectID string, window time.Duration) (int64, error)
 }
 
 // RunStore queries per-run aggregated metrics from ClickHouse.
