@@ -19,16 +19,18 @@ import (
 )
 
 type RunHandler struct {
-	runs     store.RunStore
-	spans    store.SpanStore
-	loops    store.LoopStore
-	topology store.TopologyStore
-	evals    store.EvalStore
-	payloads store.PayloadStore // nullable — nil means S3 disabled
+	runs        store.RunStore
+	spans       store.SpanStore
+	loops       store.LoopStore
+	topology    store.TopologyStore
+	evals       store.EvalStore
+	payloads    store.PayloadStore // nullable — nil means S3 disabled
+	tags        store.RunTagStore
+	annotations store.RunAnnotationStore
 }
 
-func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore, topology store.TopologyStore, evals store.EvalStore, payloads store.PayloadStore) *RunHandler {
-	return &RunHandler{runs: runs, spans: spans, loops: loops, topology: topology, evals: evals, payloads: payloads}
+func NewRunHandler(runs store.RunStore, spans store.SpanStore, loops store.LoopStore, topology store.TopologyStore, evals store.EvalStore, payloads store.PayloadStore, tags store.RunTagStore, annotations store.RunAnnotationStore) *RunHandler {
+	return &RunHandler{runs: runs, spans: spans, loops: loops, topology: topology, evals: evals, payloads: payloads, tags: tags, annotations: annotations}
 }
 
 func (h *RunHandler) Routes(r chi.Router) {
@@ -37,21 +39,90 @@ func (h *RunHandler) Routes(r chi.Router) {
 	r.Get("/{runID}/spans", h.ListSpans)
 }
 
+// maxTagFilterIDs caps the number of run IDs collected when filtering by tag to
+// prevent excessively large IN-list queries against ClickHouse.
+const maxTagFilterIDs = 500
+
 // List returns paginated runs for a project.
 // Route: GET /api/v1/projects/{projectID}/runs
+//
+// Optional query params:
+//   - tag (repeatable) — filter to runs that have ALL specified tags
 func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	limit := intQueryParam(r, "limit", 50)
 	offset := intQueryParam(r, "offset", 0)
 
-	runs, err := h.runs.List(r.Context(), projectID, limit, offset)
-	if err != nil {
-		httputil.Error(w, http.StatusInternalServerError, "failed to list runs")
-		return
+	// ── Tag-based filtering ───────────────────────────────────────────────────
+	// Collect all ?tag= values and resolve the intersection of run ID sets.
+	filterTags := r.URL.Query()["tag"]
+	var filteredRunIDs []string
+	truncated := false
+
+	if len(filterTags) > 0 && h.tags != nil {
+		// For each tag, fetch the matching run IDs and intersect.
+		// We fetch up to maxTagFilterIDs+1 to detect truncation.
+		const fetchLimit = maxTagFilterIDs + 1
+
+		var intersection map[string]struct{}
+		for _, tag := range filterTags {
+			ids, err := h.tags.ListRuns(r.Context(), projectID, tag, fetchLimit, 0)
+			if err != nil {
+				httputil.Error(w, http.StatusInternalServerError, "failed to filter by tag")
+				return
+			}
+			set := make(map[string]struct{}, len(ids))
+			for _, id := range ids {
+				set[id] = struct{}{}
+			}
+			if intersection == nil {
+				intersection = set
+			} else {
+				for id := range intersection {
+					if _, ok := set[id]; !ok {
+						delete(intersection, id)
+					}
+				}
+			}
+		}
+
+		filteredRunIDs = make([]string, 0, len(intersection))
+		for id := range intersection {
+			filteredRunIDs = append(filteredRunIDs, id)
+		}
+		if len(filteredRunIDs) > maxTagFilterIDs {
+			filteredRunIDs = filteredRunIDs[:maxTagFilterIDs]
+			truncated = true
+		}
 	}
-	total, err := h.runs.Count(r.Context(), projectID)
-	if err != nil {
-		total = 0 // non-fatal; frontend degrades gracefully
+
+	var runs []*domain.Run
+	var total int
+	var err error
+
+	if len(filterTags) > 0 {
+		// When tag filters are active, fetch only matching runs.
+		if len(filteredRunIDs) == 0 {
+			runs = []*domain.Run{}
+			total = 0
+		} else {
+			runs, err = h.runs.GetMulti(r.Context(), filteredRunIDs)
+			if err != nil {
+				httputil.Error(w, http.StatusInternalServerError, "failed to list runs")
+				return
+			}
+			total = len(filteredRunIDs)
+		}
+	} else {
+		runs, err = h.runs.List(r.Context(), projectID, limit, offset)
+		if err != nil {
+			httputil.Error(w, http.StatusInternalServerError, "failed to list runs")
+			return
+		}
+		total, err = h.runs.Count(r.Context(), projectID)
+		if err != nil {
+			total = 0 // non-fatal; frontend degrades gracefully
+		}
 	}
 
 	// Annotate runs with loop detection flag
@@ -66,6 +137,40 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 				run.LoopDetected = loopMap[run.RunID]
 			}
 		}
+
+		// Fetch tags and annotations for all runs in parallel.
+		if h.tags != nil && h.annotations != nil {
+			var (
+				tagMap    map[string][]string
+				annotMap  map[string]*domain.RunAnnotation
+				tagErr    error
+				annotErr  error
+				wg        sync.WaitGroup
+			)
+			wg.Add(2)
+			go func() {
+				defer wg.Done()
+				tagMap, tagErr = h.tags.ListByRuns(r.Context(), projectID, runIDs)
+			}()
+			go func() {
+				defer wg.Done()
+				annotMap, annotErr = h.annotations.GetByRuns(r.Context(), projectID, runIDs)
+			}()
+			wg.Wait()
+
+			if tagErr == nil && annotErr == nil {
+				for _, run := range runs {
+					if tags, ok := tagMap[run.RunID]; ok {
+						run.Tags = tags
+					} else {
+						run.Tags = []string{}
+					}
+					if a, ok := annotMap[run.RunID]; ok {
+						run.Annotation = &a.Note
+					}
+				}
+			}
+		}
 	}
 
 	// Annotate runs with active status (span activity within last 30s)
@@ -74,6 +179,10 @@ func (h *RunHandler) List(w http.ResponseWriter, r *http.Request) {
 		for _, run := range runs {
 			run.IsActive = activeMap[run.RunID]
 		}
+	}
+
+	if truncated {
+		w.Header().Set("X-Truncated", "true")
 	}
 
 	httputil.JSON(w, http.StatusOK, map[string]any{
@@ -103,6 +212,38 @@ func (h *RunHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// Mark run as active if it ended recently (within last 30s)
 	if !run.EndTime.IsZero() && time.Since(run.EndTime) < 30*time.Second {
 		run.IsActive = true
+	}
+
+	// Fetch tags and annotation in parallel.
+	if h.tags != nil && h.annotations != nil {
+		var (
+			tags     []string
+			annot    *domain.RunAnnotation
+			tagErr   error
+			annotErr error
+			wg       sync.WaitGroup
+		)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			tags, tagErr = h.tags.List(r.Context(), run.ProjectID, runID)
+		}()
+		go func() {
+			defer wg.Done()
+			annot, annotErr = h.annotations.Get(r.Context(), run.ProjectID, runID)
+		}()
+		wg.Wait()
+
+		if tagErr == nil {
+			if tags == nil {
+				run.Tags = []string{}
+			} else {
+				run.Tags = tags
+			}
+		}
+		if annotErr == nil && annot != nil {
+			run.Annotation = &annot.Note
+		}
 	}
 
 	httputil.JSON(w, http.StatusOK, run)

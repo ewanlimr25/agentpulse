@@ -40,6 +40,17 @@ export interface Run {
   TtftP95Ms?: number;
   StreamingSpanCount?: number;
   IsActive?: boolean;
+  tags?: string[];
+  annotation?: string | null;
+}
+
+export interface RunAnnotation {
+  id: string;
+  projectId: string;
+  runId: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Session {

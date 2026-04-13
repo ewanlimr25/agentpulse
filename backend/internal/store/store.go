@@ -211,6 +211,37 @@ type AnalyticsStore interface {
 	ModelStats(ctx context.Context, projectID string, windowSeconds int) ([]*domain.ModelStats, error)
 }
 
+// RunTagStore manages run tags in Postgres.
+// All methods require projectID to enforce project-scoped access at the store layer.
+type RunTagStore interface {
+	// List returns all tags for a specific run.
+	List(ctx context.Context, projectID, runID string) ([]string, error)
+	// ListByRuns returns a map of runID → tags for multiple runs in one query.
+	ListByRuns(ctx context.Context, projectID string, runIDs []string) (map[string][]string, error)
+	// Add attaches a tag to a run. Silently ignores duplicates.
+	Add(ctx context.Context, projectID, runID, tag string) error
+	// Delete removes a tag from a run. No-op if the tag does not exist.
+	Delete(ctx context.Context, projectID, runID, tag string) error
+	// ListRuns returns up to limit run IDs (paginated by offset) that carry the given tag.
+	// Results are capped at 500.
+	ListRuns(ctx context.Context, projectID, tag string, limit, offset int) ([]string, error)
+	// ListAllTags returns all distinct tags used within a project (for filter dropdowns).
+	ListAllTags(ctx context.Context, projectID string) ([]string, error)
+}
+
+// RunAnnotationStore manages run annotations (free-text notes) in Postgres.
+// At most one annotation exists per (project_id, run_id).
+type RunAnnotationStore interface {
+	// Upsert creates or replaces the annotation for a run.
+	Upsert(ctx context.Context, a *domain.RunAnnotation) error
+	// Get returns the annotation for a run, or nil if none exists.
+	Get(ctx context.Context, projectID, runID string) (*domain.RunAnnotation, error)
+	// GetByRuns returns a map of runID → annotation for multiple runs in one query.
+	GetByRuns(ctx context.Context, projectID string, runIDs []string) (map[string]*domain.RunAnnotation, error)
+	// Delete removes the annotation for a run. No-op if none exists.
+	Delete(ctx context.Context, projectID, runID string) error
+}
+
 // ExportStore supports streaming data export from ClickHouse.
 type ExportStore interface {
 	// CountSpans returns the number of spans matching the export filters.

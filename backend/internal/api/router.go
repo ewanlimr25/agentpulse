@@ -38,6 +38,8 @@ func NewRouter(
 	payloads store.PayloadStore,
 	playground store.PlaygroundStore,
 	exports store.ExportStore,
+	runTags store.RunTagStore,
+	runAnnotations store.RunAnnotationStore,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
 	corsAllowedOrigins []string,
@@ -60,7 +62,8 @@ func NewRouter(
 
 	healthHandler := handler.NewHealthHandler(spans)
 	projectHandler := handler.NewProjectHandler(projects)
-	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals, payloads)
+	runHandler := handler.NewRunHandler(runs, spans, loops, topology, evals, payloads, runTags, runAnnotations)
+	runTagsHandler := handler.NewRunTagsHandler(runTags, runAnnotations)
 	liveHandler := handler.NewLiveHandler(spans, runs)
 	topologyHandler := handler.NewTopologyHandler(topology)
 	budgetHandler := handler.NewBudgetHandler(budget)
@@ -163,6 +166,9 @@ func NewRouter(
 			r.Get("/health", healthHandler.Status)
 			r.Get("/live", liveHandler.StreamProjectSpans)
 
+			// All distinct tags used within the project (for filter dropdown population).
+			r.Get("/tags", runTagsHandler.ListProjectTags)
+
 			// Prompt Playground — enabled only when pricing table + LLM client are configured.
 			if playgroundHandler != nil {
 				r.Route("/playground", func(r chi.Router) {
@@ -202,6 +208,13 @@ func NewRouter(
 			r.Route("/topology", func(r chi.Router) {
 				topologyHandler.Routes(r)
 			})
+
+			// Tags and annotations.
+			r.Post("/tags", runTagsHandler.AddTag)
+			r.Delete("/tags/{tag}", runTagsHandler.RemoveTag)
+			r.Get("/tags", runTagsHandler.ListTags)
+			r.Put("/annotation", runTagsHandler.UpsertAnnotation)
+			r.Delete("/annotation", runTagsHandler.DeleteAnnotation)
 		})
 
 		// Models endpoint — lists available models for the Playground picker.

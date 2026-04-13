@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { runsApi } from "@/lib/api";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { runsApi, projectTagsApi } from "@/lib/api";
 import type { Run } from "@/lib/types";
 import { RunRow } from "./RunRow";
 import { RunFilterBar, type StatusFilter, type SortBy } from "./RunFilterBar";
@@ -11,8 +11,14 @@ import { ExportButton } from "@/components/export/ExportButton";
 
 const PAGE_SIZE = 20;
 
-function applyFilterAndSort(runs: Run[], status: StatusFilter, sort: SortBy): Run[] {
+function applyFilterAndSort(runs: Run[], status: StatusFilter, sort: SortBy, tagFilter: string[]): Run[] {
   let result = status === "all" ? runs : runs.filter((r) => r.Status === status);
+
+  if (tagFilter.length > 0) {
+    result = result.filter((r) =>
+      tagFilter.every((tag) => r.tags?.includes(tag))
+    );
+  }
 
   result = [...result].sort((a, b) => {
     switch (sort) {
@@ -38,8 +44,15 @@ export function RunList({ projectId }: Props) {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [compareMode, setCompareMode] = useState(false);
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+
+  const { data: projectTagsData } = useQuery({
+    queryKey: ["projectTags", projectId],
+    queryFn: () => projectTagsApi.listProjectTags(projectId),
+    staleTime: 30_000,
+  });
 
   const {
     data,
@@ -72,7 +85,7 @@ export function RunList({ projectId }: Props) {
   }
 
   const total = data?.pages[0]?.total ?? 0;
-  const filtered = applyFilterAndSort(allRuns, statusFilter, sortBy);
+  const filtered = applyFilterAndSort(allRuns, statusFilter, sortBy, tagFilter);
 
   function toggleRunSelection(runId: string) {
     setSelectedRunIds((prev) => {
@@ -111,12 +124,15 @@ export function RunList({ projectId }: Props) {
           onStatusChange={setStatusFilter}
           sortBy={sortBy}
           onSortChange={setSortBy}
+          availableTags={projectTagsData ?? []}
+          selectedTags={tagFilter}
+          onTagsChange={setTagFilter}
         />
         <div className="flex items-center gap-3">
           {!isLoading && total > 0 && (
             <p className="text-sm text-[var(--text-muted)]">
               Showing <span className="text-[var(--text)]">{filtered.length}</span>
-              {statusFilter !== "all" && allRuns.length !== filtered.length && (
+              {(statusFilter !== "all" || tagFilter.length > 0) && allRuns.length !== filtered.length && (
                 <> (filtered from {allRuns.length})</>
               )}{" "}
               of <span className="text-[var(--text)]">{total}</span> runs

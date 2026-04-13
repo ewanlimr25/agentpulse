@@ -4,6 +4,8 @@ import { use, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { runsApi, evalsApi, loopsApi } from "@/lib/api";
+import { RunTags } from "@/components/runs/RunTags";
+import { RunAnnotation } from "@/components/runs/RunAnnotation";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { MetricCard } from "@/components/ui/MetricCard";
 import { SpanKindBadge } from "@/components/spans/SpanKindBadge";
@@ -241,6 +243,26 @@ export default function RunPage({
             )}
           </div>
         )}
+
+        {/* Tags & Annotation */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--text)] uppercase tracking-wide mb-3">Tags</h2>
+            <RunTags
+              runId={runId}
+              projectId={projectId}
+              initialTags={displayRun?.tags ?? []}
+            />
+          </section>
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--text)] uppercase tracking-wide mb-3">Annotation</h2>
+            <RunAnnotation
+              runId={runId}
+              projectId={projectId}
+              initialNote={displayRun?.annotation}
+            />
+          </section>
+        </div>
 
         <h2 className="text-lg font-semibold text-[var(--text)] mb-4">Spans</h2>
 

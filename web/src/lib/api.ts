@@ -89,6 +89,42 @@ export const runsApi = {
     apiFetch<ReplayBundle>(`/api/v1/runs/${runId}/replay-bundle`, { projectId }),
 };
 
+// ── Run Tags & Annotations ────────────────────────────────────────────────────
+
+export const runTagsApi = {
+  listTags: (runId: string, projectId: string) =>
+    apiFetch<{ tags: string[] }>(`/api/v1/runs/${runId}/tags`, { projectId })
+      .then((r) => r.tags),
+  addTag: (runId: string, tag: string, projectId: string) =>
+    apiFetch<void>(`/api/v1/runs/${runId}/tags`, {
+      method: "POST",
+      projectId,
+      body: JSON.stringify({ tag }),
+    }),
+  removeTag: (runId: string, tag: string, projectId: string) =>
+    apiFetch<void>(`/api/v1/runs/${runId}/tags/${encodeURIComponent(tag)}`, {
+      method: "DELETE",
+      projectId,
+    }),
+  upsertAnnotation: (runId: string, note: string, projectId: string) =>
+    apiFetch<void>(`/api/v1/runs/${runId}/annotation`, {
+      method: "PUT",
+      projectId,
+      body: JSON.stringify({ note }),
+    }),
+  deleteAnnotation: (runId: string, projectId: string) =>
+    apiFetch<void>(`/api/v1/runs/${runId}/annotation`, {
+      method: "DELETE",
+      projectId,
+    }),
+};
+
+export const projectTagsApi = {
+  listProjectTags: (projectId: string) =>
+    apiFetch<{ tags: string[] }>(`/api/v1/projects/${projectId}/tags`)
+      .then((r) => r.tags),
+};
+
 // ── Evals ─────────────────────────────────────────────────────────────────────
 
 export const evalsApi = {

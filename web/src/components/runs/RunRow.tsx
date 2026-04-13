@@ -21,9 +21,10 @@ interface RunRowProps {
   selectable?: boolean;
   selected?: boolean;
   onToggle?: () => void;
+  onTagClick?: (tag: string) => void;
 }
 
-export function RunRow({ run, projectId, selectable, selected, onToggle }: RunRowProps) {
+export function RunRow({ run, projectId, selectable, selected, onToggle, onTagClick }: RunRowProps) {
   return (
     <Link
       href={`/projects/${projectId}/runs/${run.RunID}`}
@@ -56,6 +57,24 @@ export function RunRow({ run, projectId, selectable, selected, onToggle }: RunRo
         <p className="text-xs text-[var(--text-muted)]">
           {new Date(run.StartTime).toLocaleString()}
         </p>
+        {run.tags && run.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {run.tags.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onTagClick?.(tag);
+                }}
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-950/50 border border-indigo-700/50 text-indigo-300 hover:bg-indigo-900/60 hover:border-indigo-600 transition-colors"
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-6 text-sm tabular-nums">
         {run.LoopDetected && <LoopBadge />}

@@ -211,7 +211,7 @@ func TestReplayBundle_ResolvesPayloadsAndComputesCallIndex(t *testing.T) {
 	spans := &fakeSpanStore{spans: []*domain.Span{span1, span2}}
 	topo := &fakeTopologyStore{topology: &domain.Topology{RunID: "run-1"}}
 
-	h := handler.NewRunHandler(runs, spans, &fakeLoopStore{}, topo, &fakeEvalStore{}, payloads)
+	h := handler.NewRunHandler(runs, spans, &fakeLoopStore{}, topo, &fakeEvalStore{}, payloads, nil, nil)
 
 	rr := httptest.NewRecorder()
 	h.ReplayBundle(rr, newReplayRequest("run-1"))
@@ -286,6 +286,8 @@ func TestReplayBundle_IDOR_WrongProjectToken(t *testing.T) {
 		&fakeLoopStore{},
 		&fakeTopologyStore{},
 		&fakeEvalStore{},
+		nil,
+		nil,
 		nil,
 	)
 

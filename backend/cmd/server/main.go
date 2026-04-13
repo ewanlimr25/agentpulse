@@ -70,6 +70,8 @@ func main() {
 	piiConfigStore := pgstore.NewProjectPIIConfigStore(pgPool)
 	spanFeedbackStore := pgstore.NewSpanFeedbackStore(pgPool)
 	playgroundStore := pgstore.NewPlaygroundStore(pgPool)
+	runTagStore := pgstore.NewRunTagStore(pgPool)
+	runAnnotationStore := pgstore.NewRunAnnotationStore(pgPool)
 
 	// ── Payload store (S3 offloading) ─────────────────────────────────────
 	var payloadStore store.PayloadStore
@@ -140,7 +142,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

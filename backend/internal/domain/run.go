@@ -56,4 +56,12 @@ type Run struct {
 	// IsActive is true when the run has had span activity within the last 30 seconds.
 	// Populated at the API layer; not stored in ClickHouse.
 	IsActive bool
+
+	// Tags is the list of tag strings attached to this run.
+	// Populated at the API layer from Postgres; never stored in ClickHouse.
+	Tags []string `json:"tags,omitempty"`
+
+	// Annotation is the free-text note attached to this run, or nil if none exists.
+	// Populated at the API layer from Postgres; never stored in ClickHouse.
+	Annotation *string `json:"annotation,omitempty"`
 }
