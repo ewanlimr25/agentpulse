@@ -365,6 +365,276 @@ func (h *RunHandler) Compare(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, comparison)
 }
 
+// maxPromptDiffSpans caps the number of span diffs returned in a single response.
+const maxPromptDiffSpans = 500
+
+// PromptDiff compares prompt content and model parameters for LLM spans across two runs.
+// Route: GET /api/v1/projects/{projectID}/runs/compare/prompt-diff?a={runIdA}&b={runIdB}
+func (h *RunHandler) PromptDiff(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	runIDA := r.URL.Query().Get("a")
+	runIDB := r.URL.Query().Get("b")
+
+	if runIDA == "" || runIDB == "" {
+		httputil.Error(w, http.StatusBadRequest, "query params 'a' and 'b' are required")
+		return
+	}
+	if runIDA == runIDB {
+		httputil.Error(w, http.StatusBadRequest, "query params 'a' and 'b' must be different run IDs")
+		return
+	}
+
+	// Fetch both runs and verify they belong to this project.
+	runs, err := h.runs.GetMulti(r.Context(), []string{runIDA, runIDB})
+	if err != nil {
+		httputil.Error(w, http.StatusNotFound, "one or both runs not found")
+		return
+	}
+	runA, runB := runs[0], runs[1]
+
+	if runA.ProjectID != projectID || runB.ProjectID != projectID {
+		httputil.Error(w, http.StatusForbidden, "run does not belong to this project")
+		return
+	}
+
+	// Fetch LLM spans for both runs in parallel.
+	var (
+		spansA, spansB []*domain.Span
+		errA, errB     error
+		wg             sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		spansA, errA = h.spans.ListLLMSpansByRun(r.Context(), runIDA)
+	}()
+	go func() {
+		defer wg.Done()
+		spansB, errB = h.spans.ListLLMSpansByRun(r.Context(), runIDB)
+	}()
+	wg.Wait()
+
+	if errA != nil || errB != nil {
+		httputil.Error(w, http.StatusInternalServerError, "failed to fetch LLM spans")
+		return
+	}
+
+	// Resolve S3 payloads for spans that have offloaded content.
+	if h.payloads != nil {
+		sem := make(chan struct{}, replayPayloadResolveConcurrency)
+		var resolveWg sync.WaitGroup
+		for _, sp := range append(spansA, spansB...) {
+			if sp.PayloadS3Key == "" {
+				continue
+			}
+			resolveWg.Add(1)
+			sem <- struct{}{}
+			go func(span *domain.Span) {
+				defer resolveWg.Done()
+				defer func() { <-sem }()
+				chstore.ResolvePayloads(r.Context(), span, h.payloads)
+			}(sp)
+		}
+		resolveWg.Wait()
+	}
+
+	// Build span maps keyed by "agentName::spanName::callIndex".
+	buildSpanMap := func(spans []*domain.Span) (map[string]*domain.Span, []string) {
+		counts := make(map[string]int, len(spans))
+		m := make(map[string]*domain.Span, len(spans))
+		var keys []string
+		for _, sp := range spans {
+			base := sp.AgentName + "::" + sp.SpanName
+			idx := counts[base]
+			counts[base] = idx + 1
+			key := base + "::" + strconv.Itoa(idx)
+			m[key] = sp
+			keys = append(keys, key)
+		}
+		return m, keys
+	}
+
+	mapA, keysA := buildSpanMap(spansA)
+	mapB, keysB := buildSpanMap(spansB)
+
+	// Build ordered set of all keys, preserving appearance order.
+	seen := make(map[string]struct{})
+	var allKeys []string
+	for _, k := range keysA {
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			allKeys = append(allKeys, k)
+		}
+	}
+	for _, k := range keysB {
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			allKeys = append(allKeys, k)
+		}
+	}
+
+	// Compute diffs.
+	var changed []domain.SpanPromptDiff
+	unchangedCount := 0
+
+	for _, key := range allKeys {
+		spA, inA := mapA[key]
+		spB, inB := mapB[key]
+
+		// Parse key components for display fields.
+		// key format: "agentName::spanName::callIndex"
+		parts := splitSpanKey(key)
+		agentName, spanName, callIndex := parts[0], parts[1], parts[2]
+		idx, _ := strconv.Atoi(callIndex)
+
+		if inA && !inB {
+			changed = append(changed, domain.SpanPromptDiff{
+				SpanKey:     key,
+				AgentName:   agentName,
+				SpanName:    spanName,
+				CallIndex:   idx,
+				Status:      "only-a",
+				PromptDiffs: nil,
+				ParamDiffs:  nil,
+			})
+			continue
+		}
+		if !inA && inB {
+			changed = append(changed, domain.SpanPromptDiff{
+				SpanKey:     key,
+				AgentName:   agentName,
+				SpanName:    spanName,
+				CallIndex:   idx,
+				Status:      "only-b",
+				PromptDiffs: nil,
+				ParamDiffs:  nil,
+			})
+			continue
+		}
+
+		// Both present — compare fields.
+		promptDiffs := comparePromptFields(spA, spB)
+		paramDiffs := compareModelParams(spA, spB)
+
+		anyChanged := false
+		for _, d := range promptDiffs {
+			if d.Changed {
+				anyChanged = true
+				break
+			}
+		}
+		if !anyChanged {
+			for _, d := range paramDiffs {
+				if d.Changed {
+					anyChanged = true
+					break
+				}
+			}
+		}
+
+		if anyChanged {
+			status := "changed"
+			changed = append(changed, domain.SpanPromptDiff{
+				SpanKey:     key,
+				AgentName:   agentName,
+				SpanName:    spanName,
+				CallIndex:   idx,
+				Status:      status,
+				PromptDiffs: promptDiffs,
+				ParamDiffs:  paramDiffs,
+			})
+		} else {
+			unchangedCount++
+		}
+	}
+
+	// Cap response size.
+	truncated := false
+	if len(changed) > maxPromptDiffSpans {
+		changed = changed[:maxPromptDiffSpans]
+		truncated = true
+	}
+
+	result := &domain.RunPromptDiff{
+		RunIDA:         runIDA,
+		RunIDB:         runIDB,
+		Spans:          changed,
+		UnchangedCount: unchangedCount,
+		Truncated:      truncated,
+	}
+
+	httputil.JSON(w, http.StatusOK, result)
+}
+
+// splitSpanKey splits "agentName::spanName::callIndex" into its three parts.
+// It handles agent names or span names that themselves contain "::".
+func splitSpanKey(key string) [3]string {
+	// The callIndex is always the last segment after the final "::".
+	lastSep := -1
+	for i := len(key) - 1; i >= 1; i-- {
+		if key[i] == ':' && key[i-1] == ':' {
+			lastSep = i - 1
+			break
+		}
+	}
+	if lastSep < 0 {
+		return [3]string{key, "", "0"}
+	}
+	callIndex := key[lastSep+2:]
+
+	// The second-to-last segment is the span name.
+	rest := key[:lastSep]
+	secondSep := -1
+	for i := len(rest) - 1; i >= 1; i-- {
+		if rest[i] == ':' && rest[i-1] == ':' {
+			secondSep = i - 1
+			break
+		}
+	}
+	if secondSep < 0 {
+		return [3]string{rest, "", callIndex}
+	}
+	return [3]string{rest[:secondSep], rest[secondSep+2:], callIndex}
+}
+
+// comparePromptFields compares gen_ai.prompt between two spans.
+func comparePromptFields(a, b *domain.Span) []domain.PromptFieldDiff {
+	promptA := a.Attributes["gen_ai.prompt"]
+	promptB := b.Attributes["gen_ai.prompt"]
+	return []domain.PromptFieldDiff{
+		{
+			FieldName: "gen_ai.prompt",
+			A:         promptA,
+			B:         promptB,
+			Changed:   promptA != promptB,
+		},
+	}
+}
+
+// compareModelParams compares model_id, temperature, and max_tokens between two spans.
+func compareModelParams(a, b *domain.Span) []domain.ModelParamDiff {
+	params := []struct {
+		name string
+		valA string
+		valB string
+	}{
+		{"model_id", a.ModelID, b.ModelID},
+		{"gen_ai.request.temperature", a.Attributes["gen_ai.request.temperature"], b.Attributes["gen_ai.request.temperature"]},
+		{"gen_ai.request.max_tokens", a.Attributes["gen_ai.request.max_tokens"], b.Attributes["gen_ai.request.max_tokens"]},
+	}
+
+	diffs := make([]domain.ModelParamDiff, 0, len(params))
+	for _, p := range params {
+		diffs = append(diffs, domain.ModelParamDiff{
+			ParamName: p.name,
+			A:         p.valA,
+			B:         p.valB,
+			Changed:   p.valA != p.valB,
+		})
+	}
+	return diffs
+}
+
 // GetSpan returns a single span with payload fields resolved from S3 if offloaded.
 // Route: GET /runs/{runID}/spans/{spanID}
 func (h *RunHandler) GetSpan(w http.ResponseWriter, r *http.Request) {

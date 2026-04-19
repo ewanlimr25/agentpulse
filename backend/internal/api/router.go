@@ -116,6 +116,7 @@ func NewRouter(
 			r.Get("/", projectHandler.Get)
 
 			r.Get("/runs", runHandler.List)
+			r.Get("/runs/compare/prompt-diff", runHandler.PromptDiff)
 			r.Get("/runs/compare", runHandler.Compare)
 			r.Get("/evals/summary", evalHandler.SummaryByProject)
 			r.Get("/evals/baseline", evalHandler.BaselineByProject)

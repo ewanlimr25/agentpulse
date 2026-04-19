@@ -38,6 +38,9 @@ func (m *healthSpanStore) ListByProjectSince(_ context.Context, _ string, _ time
 func (m *healthSpanStore) CountSince(_ context.Context, _ string, _ time.Duration) (int64, error) {
 	return 0, nil
 }
+func (m *healthSpanStore) ListLLMSpansByRun(_ context.Context, _ string) ([]*domain.Span, error) {
+	return nil, nil
+}
 
 func ptr[T any](v T) *T { return &v }
 

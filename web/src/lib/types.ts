@@ -347,6 +347,38 @@ export interface ReplayBundle {
 
 // ── Run Comparison ────────────────────────────────────────────────────────────
 
+export interface PromptFieldDiff {
+  field_name: string;
+  a: string;
+  b: string;
+  changed: boolean;
+}
+
+export interface ModelParamDiff {
+  param_name: string;
+  a: string;
+  b: string;
+  changed: boolean;
+}
+
+export interface SpanPromptDiff {
+  span_key: string;
+  agent_name: string;
+  span_name: string;
+  call_index: number;
+  status: 'changed' | 'only-a' | 'only-b' | 'unchanged';
+  prompt_diffs: PromptFieldDiff[];
+  param_diffs: ModelParamDiff[];
+}
+
+export interface RunPromptDiff {
+  run_id_a: string;
+  run_id_b: string;
+  spans: SpanPromptDiff[];
+  unchanged_count: number;
+  truncated: boolean;
+}
+
 export interface RunComparison {
   RunA: Run;
   RunB: Run;

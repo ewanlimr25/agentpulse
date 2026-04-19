@@ -7,6 +7,7 @@ import { runsApi } from "@/lib/api";
 import { AuthError } from "@/lib/api";
 import { ComparisonMetrics } from "@/components/compare/ComparisonMetrics";
 import { ComparisonTopology } from "@/components/compare/ComparisonTopology";
+import { ComparisonPromptDiff } from "@/components/compare/ComparisonPromptDiff";
 
 interface PageProps {
   params: Promise<{ projectId: string; runIdA: string; runIdB: string }>;
@@ -23,6 +24,13 @@ export default function CompareRunsPage({ params }: PageProps) {
     queryKey: ["compare", projectId, runIdA, runIdB],
     queryFn: () => runsApi.compare(projectId, runIdA, runIdB),
     retry: false,
+  });
+
+  const { data: promptDiffData } = useQuery({
+    queryKey: ["runs", "prompt-diff", projectId, runIdA, runIdB],
+    queryFn: () => runsApi.promptDiff(projectId, runIdA, runIdB),
+    enabled: !!data,
+    staleTime: 5 * 60 * 1000,
   });
 
   function renderError(err: unknown) {
@@ -124,6 +132,16 @@ export default function CompareRunsPage({ params }: PageProps) {
                 topologyB={data.TopologyB}
               />
             </section>
+
+            {/* Prompt diff */}
+            {promptDiffData && (
+              <section>
+                <h2 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-3">
+                  Prompt Diff
+                </h2>
+                <ComparisonPromptDiff data={promptDiffData} />
+              </section>
+            )}
           </>
         )}
       </main>

@@ -28,6 +28,7 @@ type fakeRunStore struct {
 	getErr         error
 	projectsByRun  map[string]string
 	getProjectErr  error
+	runsMap        map[string]*domain.Run // used by GetMulti
 }
 
 func (f *fakeRunStore) List(_ context.Context, _ string, _, _ int) ([]*domain.Run, error) {
@@ -37,8 +38,19 @@ func (f *fakeRunStore) Count(_ context.Context, _ string) (int, error) { return 
 func (f *fakeRunStore) Get(_ context.Context, _ string) (*domain.Run, error) {
 	return f.run, f.getErr
 }
-func (f *fakeRunStore) GetMulti(_ context.Context, _ []string) ([]*domain.Run, error) {
-	return nil, nil
+func (f *fakeRunStore) GetMulti(_ context.Context, ids []string) ([]*domain.Run, error) {
+	if f.runsMap == nil {
+		return nil, nil
+	}
+	out := make([]*domain.Run, len(ids))
+	for i, id := range ids {
+		r, ok := f.runsMap[id]
+		if !ok {
+			return nil, fmt.Errorf("run not found: %s", id)
+		}
+		out[i] = r
+	}
+	return out, nil
 }
 func (f *fakeRunStore) ListBySession(_ context.Context, _, _ string) ([]*domain.Run, error) {
 	return nil, nil
@@ -58,11 +70,18 @@ func (f *fakeRunStore) ListActiveRunIDs(_ context.Context, _ string, _ int) (map
 }
 
 type fakeSpanStore struct {
-	spans []*domain.Span
-	err   error
+	spans    []*domain.Span
+	err      error
+	llmSpans map[string][]*domain.Span // runID -> LLM spans; nil means fall back to spans
 }
 
 func (f *fakeSpanStore) ListByRun(_ context.Context, _ string) ([]*domain.Span, error) {
+	return f.spans, f.err
+}
+func (f *fakeSpanStore) ListLLMSpansByRun(_ context.Context, runID string) ([]*domain.Span, error) {
+	if f.llmSpans != nil {
+		return f.llmSpans[runID], f.err
+	}
 	return f.spans, f.err
 }
 func (f *fakeSpanStore) GetByID(_ context.Context, _, _ string) (*domain.Span, error) {
@@ -306,5 +325,291 @@ func TestReplayBundle_IDOR_WrongProjectToken(t *testing.T) {
 	// existing middleware IDOR test. The handler must never run.
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for cross-project access, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PromptDiff helpers
+// ---------------------------------------------------------------------------
+
+// newPromptDiffRequest builds an HTTP request for the PromptDiff endpoint with
+// chi URL params and query params pre-populated so the handler can run directly.
+func newPromptDiffRequest(projectID, runIDA, runIDB string) *http.Request {
+	url := "/api/v1/projects/" + projectID + "/runs/compare/prompt-diff?a=" + runIDA + "&b=" + runIDB
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("projectID", projectID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+// invokePromptDiff creates a RunHandler with the supplied stores and fires the
+// PromptDiff handler, returning the recorder for assertions.
+func invokePromptDiff(rs *fakeRunStore, ss *fakeSpanStore, projectID, runIDA, runIDB string) *httptest.ResponseRecorder {
+	h := handler.NewRunHandler(rs, ss, &fakeLoopStore{}, &fakeTopologyStore{}, &fakeEvalStore{}, nil, nil, nil)
+	rr := httptest.NewRecorder()
+	h.PromptDiff(rr, newPromptDiffRequest(projectID, runIDA, runIDB))
+	return rr
+}
+
+// decodePromptDiff unmarshals the PromptDiff response body, unwrapping the {"data": ...} envelope.
+func decodePromptDiff(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var envelope struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v — body=%s", err, rr.Body.String())
+	}
+	return envelope.Data
+}
+
+// ---------------------------------------------------------------------------
+// PromptDiff — table-driven tests
+// ---------------------------------------------------------------------------
+
+func TestPromptDiff_ChangedSpan(t *testing.T) {
+	const projectID = "proj-1"
+	const runIDA = "run-A"
+	const runIDB = "run-B"
+
+	spA := &domain.Span{
+		SpanID:        "span-a1",
+		RunID:         runIDA,
+		ProjectID:     projectID,
+		AgentName:     "writer",
+		SpanName:      "generate",
+		AgentSpanKind: domain.SpanKindLLMCall,
+		ModelID:       "gpt-4",
+		Attributes: map[string]string{
+			"gen_ai.prompt":                  "Write a poem",
+			"gen_ai.request.temperature":     "0.7",
+			"gen_ai.request.max_tokens":      "256",
+		},
+	}
+	spB := &domain.Span{
+		SpanID:        "span-b1",
+		RunID:         runIDB,
+		ProjectID:     projectID,
+		AgentName:     "writer",
+		SpanName:      "generate",
+		AgentSpanKind: domain.SpanKindLLMCall,
+		ModelID:       "gpt-4",
+		Attributes: map[string]string{
+			"gen_ai.prompt":                  "Write a story",
+			"gen_ai.request.temperature":     "0.7",
+			"gen_ai.request.max_tokens":      "256",
+		},
+	}
+
+	rs := &fakeRunStore{
+		runsMap: map[string]*domain.Run{
+			runIDA: {RunID: runIDA, ProjectID: projectID},
+			runIDB: {RunID: runIDB, ProjectID: projectID},
+		},
+	}
+	ss := &fakeSpanStore{
+		llmSpans: map[string][]*domain.Span{
+			runIDA: {spA},
+			runIDB: {spB},
+		},
+	}
+
+	rr := invokePromptDiff(rs, ss, projectID, runIDA, runIDB)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	result := decodePromptDiff(t, rr)
+	spans := result["spans"].([]any)
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 span diff, got %d", len(spans))
+	}
+	diff := spans[0].(map[string]any)
+	if diff["status"] != "changed" {
+		t.Errorf("expected status=changed, got %q", diff["status"])
+	}
+	if result["unchanged_count"].(float64) != 0 {
+		t.Errorf("expected unchanged_count=0")
+	}
+}
+
+func TestPromptDiff_OnlyASpan(t *testing.T) {
+	const projectID = "proj-1"
+	const runIDA = "run-A"
+	const runIDB = "run-B"
+
+	spA := &domain.Span{
+		SpanID:        "span-a1",
+		RunID:         runIDA,
+		ProjectID:     projectID,
+		AgentName:     "searcher",
+		SpanName:      "lookup",
+		AgentSpanKind: domain.SpanKindLLMCall,
+		Attributes:    map[string]string{"gen_ai.prompt": "find info"},
+	}
+
+	rs := &fakeRunStore{
+		runsMap: map[string]*domain.Run{
+			runIDA: {RunID: runIDA, ProjectID: projectID},
+			runIDB: {RunID: runIDB, ProjectID: projectID},
+		},
+	}
+	ss := &fakeSpanStore{
+		llmSpans: map[string][]*domain.Span{
+			runIDA: {spA},
+			runIDB: {},
+		},
+	}
+
+	rr := invokePromptDiff(rs, ss, projectID, runIDA, runIDB)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	result := decodePromptDiff(t, rr)
+	spans := result["spans"].([]any)
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 span diff, got %d", len(spans))
+	}
+	diff := spans[0].(map[string]any)
+	if diff["status"] != "only-a" {
+		t.Errorf("expected status=only-a, got %q", diff["status"])
+	}
+}
+
+func TestPromptDiff_OnlyBSpan(t *testing.T) {
+	const projectID = "proj-1"
+	const runIDA = "run-A"
+	const runIDB = "run-B"
+
+	spB := &domain.Span{
+		SpanID:        "span-b1",
+		RunID:         runIDB,
+		ProjectID:     projectID,
+		AgentName:     "summarizer",
+		SpanName:      "condense",
+		AgentSpanKind: domain.SpanKindLLMCall,
+		Attributes:    map[string]string{"gen_ai.prompt": "summarize this"},
+	}
+
+	rs := &fakeRunStore{
+		runsMap: map[string]*domain.Run{
+			runIDA: {RunID: runIDA, ProjectID: projectID},
+			runIDB: {RunID: runIDB, ProjectID: projectID},
+		},
+	}
+	ss := &fakeSpanStore{
+		llmSpans: map[string][]*domain.Span{
+			runIDA: {},
+			runIDB: {spB},
+		},
+	}
+
+	rr := invokePromptDiff(rs, ss, projectID, runIDA, runIDB)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	result := decodePromptDiff(t, rr)
+	spans := result["spans"].([]any)
+	if len(spans) != 1 {
+		t.Fatalf("expected 1 span diff, got %d", len(spans))
+	}
+	diff := spans[0].(map[string]any)
+	if diff["status"] != "only-b" {
+		t.Errorf("expected status=only-b, got %q", diff["status"])
+	}
+}
+
+func TestPromptDiff_UnchangedSpanCountedNotReturned(t *testing.T) {
+	const projectID = "proj-1"
+	const runIDA = "run-A"
+	const runIDB = "run-B"
+
+	makeSpan := func(id, runID, prompt string) *domain.Span {
+		return &domain.Span{
+			SpanID:        id,
+			RunID:         runID,
+			ProjectID:     projectID,
+			AgentName:     "bot",
+			SpanName:      "chat",
+			AgentSpanKind: domain.SpanKindLLMCall,
+			ModelID:       "gpt-3.5",
+			Attributes: map[string]string{
+				"gen_ai.prompt":              prompt,
+				"gen_ai.request.temperature": "0.5",
+				"gen_ai.request.max_tokens":  "128",
+			},
+		}
+	}
+
+	rs := &fakeRunStore{
+		runsMap: map[string]*domain.Run{
+			runIDA: {RunID: runIDA, ProjectID: projectID},
+			runIDB: {RunID: runIDB, ProjectID: projectID},
+		},
+	}
+	// Both runs have identical spans — everything should be unchanged.
+	ss := &fakeSpanStore{
+		llmSpans: map[string][]*domain.Span{
+			runIDA: {makeSpan("a1", runIDA, "hello")},
+			runIDB: {makeSpan("b1", runIDB, "hello")},
+		},
+	}
+
+	rr := invokePromptDiff(rs, ss, projectID, runIDA, runIDB)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	result := decodePromptDiff(t, rr)
+
+	// No changed spans returned.
+	spans := result["spans"]
+	if spans != nil {
+		if s, ok := spans.([]any); ok && len(s) != 0 {
+			t.Errorf("expected no changed spans, got %d", len(s))
+		}
+	}
+
+	// unchanged_count should be 1.
+	if result["unchanged_count"].(float64) != 1 {
+		t.Errorf("expected unchanged_count=1, got %v", result["unchanged_count"])
+	}
+}
+
+func TestPromptDiff_MissingQueryParams(t *testing.T) {
+	rs := &fakeRunStore{}
+	ss := &fakeSpanStore{}
+	h := handler.NewRunHandler(rs, ss, &fakeLoopStore{}, &fakeTopologyStore{}, &fakeEvalStore{}, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/proj-1/runs/compare/prompt-diff", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("projectID", "proj-1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	h.PromptDiff(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestPromptDiff_SameRunIDRejected(t *testing.T) {
+	rs := &fakeRunStore{}
+	ss := &fakeSpanStore{}
+	h := handler.NewRunHandler(rs, ss, &fakeLoopStore{}, &fakeTopologyStore{}, &fakeEvalStore{}, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/projects/proj-1/runs/compare/prompt-diff?a=run-X&b=run-X", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("projectID", "proj-1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+	h.PromptDiff(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
