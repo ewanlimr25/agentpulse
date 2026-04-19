@@ -14,12 +14,6 @@ const PAGE_SIZE = 20;
 function applyFilterAndSort(runs: Run[], status: StatusFilter, sort: SortBy, tagFilter: string[]): Run[] {
   let result = status === "all" ? runs : runs.filter((r) => r.Status === status);
 
-  if (tagFilter.length > 0) {
-    result = result.filter((r) =>
-      tagFilter.every((tag) => r.tags?.includes(tag))
-    );
-  }
-
   result = [...result].sort((a, b) => {
     switch (sort) {
       case "oldest":
@@ -62,8 +56,8 @@ export function RunList({ projectId }: Props) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["runs", projectId],
-    queryFn: ({ pageParam }) => runsApi.list(projectId, PAGE_SIZE, pageParam as number),
+    queryKey: ["runs", projectId, tagFilter],
+    queryFn: ({ pageParam }) => runsApi.list(projectId, PAGE_SIZE, pageParam as number, tagFilter),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const next = lastPage.offset + lastPage.limit;
@@ -179,6 +173,7 @@ export function RunList({ projectId }: Props) {
             selectable={compareMode}
             selected={selectedRunIds.includes(r.RunID)}
             onToggle={() => toggleRunSelection(r.RunID)}
+            onTagClick={(tag) => setTagFilter((prev) => prev.includes(tag) ? prev : [...prev, tag])}
           />
         ))}
 

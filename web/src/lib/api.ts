@@ -69,9 +69,9 @@ export const projectsApi = {
 // ── Runs ─────────────────────────────────────────────────────────────────────
 
 export const runsApi = {
-  list: (projectId: string, limit = 20, offset = 0) =>
+  list: (projectId: string, limit = 20, offset = 0, tags: string[] = []) =>
     apiFetch<RunsListResponse>(
-      `/api/v1/projects/${projectId}/runs?limit=${limit}&offset=${offset}`
+      `/api/v1/projects/${projectId}/runs?limit=${limit}&offset=${offset}${tags.map((t) => `&tag=${encodeURIComponent(t)}`).join("")}`
     ),
   get: (runId: string, projectId: string) =>
     apiFetch<Run>(`/api/v1/runs/${runId}`, { projectId }),

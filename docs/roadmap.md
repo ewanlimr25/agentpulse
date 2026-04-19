@@ -21,26 +21,6 @@ The core observability loop is solid for a solo developer running agents:
 
 Gaps prioritized by how much they'd matter to someone running OpenClaw or similar:
 
-#### ~~2. No Live/Streaming Run View~~ ✓
-~~A developer watching an agent execute in real-time has no way to see spans arriving as they happen. The current UI is entirely retrospective — you wait for a run to finish, then inspect it. For the OpenClaw scenario, they'd want:~~
-- ~~A live tail showing spans as they stream in during an active run~~
-- ~~A "currently running" indicator on the runs list~~
-- ~~Real-time cost counter ticking up during execution~~
-
-#### ~~4. No Model Cost/Performance Comparison Dashboard~~ ✓
-~~The services page shows tool stats and agent cost breakdown, but there's no view that answers "which model should I use?" Individual developers constantly experiment with models. They need:~~
-- ~~A model-level breakdown: cost, latency, quality score, token efficiency — grouped by model ID~~
-- ~~A "what if I switched from Opus to Sonnet" cost projection~~
-
-#### 5. No Data Export
-There's no way to export runs, traces, or analytics as CSV/JSON. A solo developer doing analysis in a notebook, or wanting to share results, needs this. The replay bundle is close but it's for re-execution, not analysis.
-
-#### 6. No CLI Beyond `eval check`
-The `agentpulse eval check` CI gate exists, but a solo developer would benefit from:
-- `agentpulse runs list` — quick terminal check on recent runs
-- `agentpulse runs tail` — live tail of incoming spans (solves gap #2 from terminal)
-- `agentpulse status` — "is the collector healthy, are spans flowing?"
-
 #### 7. No Tagging / Annotations on Runs
 When iterating on agents, developers need to mark runs: "this was the version with the new system prompt," "this used tool X." There's no way to:
 - Tag runs with arbitrary labels (e.g., "experiment-v3", "baseline")

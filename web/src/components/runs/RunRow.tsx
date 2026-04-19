@@ -75,6 +75,11 @@ export function RunRow({ run, projectId, selectable, selected, onToggle, onTagCl
             ))}
           </div>
         )}
+        {run.annotation && (
+          <p className="mt-1 text-[10px] italic text-[var(--text-muted)] line-clamp-1">
+            {run.annotation}
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-6 text-sm tabular-nums">
         {run.LoopDetected && <LoopBadge />}

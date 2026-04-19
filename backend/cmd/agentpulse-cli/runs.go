@@ -19,15 +19,17 @@ import (
 // ── runs list ─────────────────────────────────────────────────────────────
 
 type runSummary struct {
-	RunID        string  `json:"RunID"`
-	StartTime    string  `json:"StartTime"`
-	EndTime      string  `json:"EndTime"`
-	DurationMS   float64 `json:"DurationMS"`
-	SpanCount    uint64  `json:"SpanCount"`
-	TotalCostUSD float64 `json:"TotalCostUSD"`
-	Status       string  `json:"Status"`
-	IsActive     bool    `json:"IsActive"`
-	LoopDetected bool    `json:"LoopDetected"`
+	RunID        string   `json:"RunID"`
+	StartTime    string   `json:"StartTime"`
+	EndTime      string   `json:"EndTime"`
+	DurationMS   float64  `json:"DurationMS"`
+	SpanCount    uint64   `json:"SpanCount"`
+	TotalCostUSD float64  `json:"TotalCostUSD"`
+	Status       string   `json:"Status"`
+	IsActive     bool     `json:"IsActive"`
+	LoopDetected bool     `json:"LoopDetected"`
+	Tags         []string `json:"tags,omitempty"`
+	Annotation   *string  `json:"annotation,omitempty"`
 }
 
 type runsListData struct {
@@ -162,6 +164,12 @@ func printRunsTable(data *runsListData) {
 		}
 		if r.LoopDetected {
 			flags += "LOOP"
+		}
+		if len(r.Tags) > 0 {
+			if flags != "" {
+				flags += " "
+			}
+			flags += "[" + strings.Join(r.Tags, ",") + "]"
 		}
 		runID := r.RunID
 		if len(runID) > 24 {
@@ -410,4 +418,278 @@ func connectAndStream(ctx context.Context, sseURL, apiKey string, fn func(eventT
 		return fmt.Errorf("stream read error: %w", err)
 	}
 	return nil
+}
+
+// ── runs tag add ──────────────────────────────────────────────────────────
+
+func runRunsTagAdd(args []string) {
+	fs := flag.NewFlagSet("runs tag add", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		project  = fs.String("project", "", "Project ID (required)")
+		apiKey   = fs.String("api-key", "", "API key (or set AGENTPULSE_API_KEY)")
+		runID    = fs.String("run", "", "Run ID (required)")
+		tag      = fs.String("tag", "", "Tag to add (required)")
+		endpoint = fs.String("endpoint", "", "AgentPulse API base URL (or set AGENTPULSE_ENDPOINT)")
+	)
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(exitError)
+		}
+		os.Exit(exitError)
+	}
+
+	if *apiKey == "" {
+		*apiKey = os.Getenv("AGENTPULSE_API_KEY")
+	}
+	if *endpoint == "" {
+		if v := os.Getenv("AGENTPULSE_ENDPOINT"); v != "" {
+			*endpoint = v
+		} else {
+			*endpoint = "https://api.agentpulse.io"
+		}
+	}
+
+	var errs []string
+	if *project == "" {
+		errs = append(errs, "--project is required")
+	}
+	if *apiKey == "" {
+		errs = append(errs, "--api-key or AGENTPULSE_API_KEY is required")
+	}
+	if *runID == "" {
+		errs = append(errs, "--run is required")
+	}
+	if *tag == "" {
+		errs = append(errs, "--tag is required")
+	}
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, "error:", e)
+		}
+		os.Exit(exitError)
+	}
+
+	if err := validateEndpoint(*endpoint); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(exitError)
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/runs/%s/tags",
+		strings.TrimRight(*endpoint, "/"), url.PathEscape(*runID))
+
+	body := fmt.Sprintf(`{"tag":%q}`, *tag)
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodPost, reqURL, strings.NewReader(body))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to build request:", err)
+		os.Exit(exitError)
+	}
+	req.Header.Set("Authorization", "Bearer "+*apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Project-ID", *project)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: request failed:", err)
+		os.Exit(exitError)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		fmt.Fprintln(os.Stderr, "error: authentication failed (401) — check AGENTPULSE_API_KEY")
+		os.Exit(exitError)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusNoContent {
+		fmt.Fprintf(os.Stderr, "error: unexpected HTTP status %d\n", resp.StatusCode)
+		os.Exit(exitError)
+	}
+
+	fmt.Println("ok")
+	os.Exit(exitPass)
+}
+
+// ── runs tag remove ───────────────────────────────────────────────────────
+
+func runRunsTagRemove(args []string) {
+	fs := flag.NewFlagSet("runs tag remove", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		project  = fs.String("project", "", "Project ID (required)")
+		apiKey   = fs.String("api-key", "", "API key (or set AGENTPULSE_API_KEY)")
+		runID    = fs.String("run", "", "Run ID (required)")
+		tag      = fs.String("tag", "", "Tag to remove (required)")
+		endpoint = fs.String("endpoint", "", "AgentPulse API base URL (or set AGENTPULSE_ENDPOINT)")
+	)
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(exitError)
+		}
+		os.Exit(exitError)
+	}
+
+	if *apiKey == "" {
+		*apiKey = os.Getenv("AGENTPULSE_API_KEY")
+	}
+	if *endpoint == "" {
+		if v := os.Getenv("AGENTPULSE_ENDPOINT"); v != "" {
+			*endpoint = v
+		} else {
+			*endpoint = "https://api.agentpulse.io"
+		}
+	}
+
+	var errs []string
+	if *project == "" {
+		errs = append(errs, "--project is required")
+	}
+	if *apiKey == "" {
+		errs = append(errs, "--api-key or AGENTPULSE_API_KEY is required")
+	}
+	if *runID == "" {
+		errs = append(errs, "--run is required")
+	}
+	if *tag == "" {
+		errs = append(errs, "--tag is required")
+	}
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, "error:", e)
+		}
+		os.Exit(exitError)
+	}
+
+	if err := validateEndpoint(*endpoint); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(exitError)
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/runs/%s/tags/%s",
+		strings.TrimRight(*endpoint, "/"), url.PathEscape(*runID), url.PathEscape(*tag))
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodDelete, reqURL, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to build request:", err)
+		os.Exit(exitError)
+	}
+	req.Header.Set("Authorization", "Bearer "+*apiKey)
+	req.Header.Set("X-Project-ID", *project)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: request failed:", err)
+		os.Exit(exitError)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		fmt.Fprintln(os.Stderr, "error: authentication failed (401) — check AGENTPULSE_API_KEY")
+		os.Exit(exitError)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		fmt.Fprintf(os.Stderr, "error: unexpected HTTP status %d\n", resp.StatusCode)
+		os.Exit(exitError)
+	}
+
+	fmt.Println("ok")
+	os.Exit(exitPass)
+}
+
+// ── runs annotate ─────────────────────────────────────────────────────────
+
+func runRunsAnnotate(args []string) {
+	fs := flag.NewFlagSet("runs annotate", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+
+	var (
+		project  = fs.String("project", "", "Project ID (required)")
+		apiKey   = fs.String("api-key", "", "API key (or set AGENTPULSE_API_KEY)")
+		runID    = fs.String("run", "", "Run ID (required)")
+		note     = fs.String("note", "", "Annotation text (required, max 5000 chars)")
+		endpoint = fs.String("endpoint", "", "AgentPulse API base URL (or set AGENTPULSE_ENDPOINT)")
+	)
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			os.Exit(exitError)
+		}
+		os.Exit(exitError)
+	}
+
+	if *apiKey == "" {
+		*apiKey = os.Getenv("AGENTPULSE_API_KEY")
+	}
+	if *endpoint == "" {
+		if v := os.Getenv("AGENTPULSE_ENDPOINT"); v != "" {
+			*endpoint = v
+		} else {
+			*endpoint = "https://api.agentpulse.io"
+		}
+	}
+
+	var errs []string
+	if *project == "" {
+		errs = append(errs, "--project is required")
+	}
+	if *apiKey == "" {
+		errs = append(errs, "--api-key or AGENTPULSE_API_KEY is required")
+	}
+	if *runID == "" {
+		errs = append(errs, "--run is required")
+	}
+	if *note == "" {
+		errs = append(errs, "--note is required")
+	}
+	if len(*note) > 5000 {
+		errs = append(errs, "--note must be 5000 characters or fewer")
+	}
+	if len(errs) > 0 {
+		for _, e := range errs {
+			fmt.Fprintln(os.Stderr, "error:", e)
+		}
+		os.Exit(exitError)
+	}
+
+	if err := validateEndpoint(*endpoint); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(exitError)
+	}
+
+	reqURL := fmt.Sprintf("%s/api/v1/runs/%s/annotation",
+		strings.TrimRight(*endpoint, "/"), url.PathEscape(*runID))
+
+	body := fmt.Sprintf(`{"note":%q}`, *note)
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest(http.MethodPut, reqURL, strings.NewReader(body))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to build request:", err)
+		os.Exit(exitError)
+	}
+	req.Header.Set("Authorization", "Bearer "+*apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Project-ID", *project)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: request failed:", err)
+		os.Exit(exitError)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		fmt.Fprintln(os.Stderr, "error: authentication failed (401) — check AGENTPULSE_API_KEY")
+		os.Exit(exitError)
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		fmt.Fprintf(os.Stderr, "error: unexpected HTTP status %d\n", resp.StatusCode)
+		os.Exit(exitError)
+	}
+
+	fmt.Println("ok")
+	os.Exit(exitPass)
 }

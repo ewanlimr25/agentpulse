@@ -51,6 +51,12 @@ func main() {
 	}
 	defer pgPool.Close()
 
+	// Verify run_tags schema migration has been applied.
+	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM run_tags LIMIT 1"); err != nil {
+		slog.Error("run_tags table not found — apply migration 011_run_tags_annotations.up.sql before starting", "error", err)
+		os.Exit(1)
+	}
+
 	// ── Stores ────────────────────────────────────────────────────────────
 	spanStore := chstore.NewSpanStore(chConn)
 	runStore := chstore.NewRunStore(chConn)
