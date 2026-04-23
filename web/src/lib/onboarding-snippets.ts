@@ -1,7 +1,7 @@
 // Framework-specific onboarding snippets for the Getting Started wizard.
-// Placeholders {{PROJECT_ID}}, {{API_KEY}}, and {{ENDPOINT}} are replaced at render time.
+// Placeholders {{PROJECT_ID}}, {{API_KEY}}, {{INGEST_TOKEN}}, and {{ENDPOINT}} are replaced at render time.
 
-export type FrameworkLanguage = "python" | "typescript";
+export type FrameworkLanguage = "python" | "typescript" | "shell";
 
 export interface Framework {
   id: string;
@@ -173,6 +173,27 @@ const completion = await client.chat.completions.create({
   model: 'gpt-4o',
   messages: [{ role: 'user', content: 'Hello!' }],
 })`,
+  },
+
+  // ── CLI Tools ────────────────────────────────────────────────────────────────
+  {
+    id: "claude-code",
+    label: "Claude Code",
+    language: "shell",
+    installCmd: "# One-time setup",
+    envVars: `AGENTPULSE_PROJECT_ID={{PROJECT_ID}}
+AGENTPULSE_INGEST_TOKEN={{INGEST_TOKEN}}
+AGENTPULSE_ENDPOINT={{ENDPOINT}}`,
+    code: `# Download and run the installer
+curl -fsSL https://raw.githubusercontent.com/agentpulse/agentpulse/main/tools/claude-code-hook/install.sh | bash
+
+# The installer will prompt for your:
+#   Project ID:    {{PROJECT_ID}}
+#   Ingest Token:  {{INGEST_TOKEN}}
+#   Endpoint:      {{ENDPOINT}}
+
+# That's it — every Claude Code tool call now appears in AgentPulse.
+# Sessions show up under the Sessions tab within seconds.`,
   },
 ];
 

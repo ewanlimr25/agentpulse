@@ -264,6 +264,23 @@ type EmailDigestStore interface {
 	UpdateLastError(ctx context.Context, projectID, errMsg string) error
 }
 
+// IngestTokenStore manages per-project ingest tokens in Postgres.
+// These tokens are used by the OTel collector to authenticate span ingestion.
+type IngestTokenStore interface {
+	// Create inserts a new ingest token for a project.
+	// tokenHash must be the SHA-256 hex of the raw token (never store the raw token).
+	// Returns the created IngestToken (without the hash).
+	Create(ctx context.Context, projectID, tokenHash, label string) (*domain.IngestToken, error)
+	// ListByProject returns all ingest tokens for a project (no hashes).
+	ListByProject(ctx context.Context, projectID string) ([]*domain.IngestToken, error)
+	// Delete removes an ingest token by id, scoped to the project to prevent cross-project deletion.
+	Delete(ctx context.Context, id, projectID string) error
+	// GetByHash looks up an ingest token by its SHA-256 hash.
+	// Used by the collector to validate an incoming ingest token.
+	// Returns an error wrapping pgx.ErrNoRows if not found.
+	GetByHash(ctx context.Context, tokenHash string) (*domain.IngestToken, error)
+}
+
 // ExportStore supports streaming data export from ClickHouse.
 type ExportStore interface {
 	// CountSpans returns the number of spans matching the export filters.

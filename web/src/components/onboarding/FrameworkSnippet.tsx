@@ -14,6 +14,7 @@ function applyPlaceholders(code: string, projectId: string, apiKey: string): str
   return code
     .replace(/\{\{PROJECT_ID\}\}/g, projectId)
     .replace(/\{\{API_KEY\}\}/g, apiKey || "<your-api-key>")
+    .replace(/\{\{INGEST_TOKEN\}\}/g, apiKey || "<your-ingest-token>")
     .replace(/\{\{ENDPOINT\}\}/g, ENDPOINT_DEFAULT);
 }
 

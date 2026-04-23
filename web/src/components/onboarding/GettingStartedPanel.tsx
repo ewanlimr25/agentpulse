@@ -21,11 +21,13 @@ function applyPlaceholders(text: string, projectId: string, apiKey: string): str
   return text
     .replace(/\{\{PROJECT_ID\}\}/g, projectId)
     .replace(/\{\{API_KEY\}\}/g, apiKey || "<your-api-key>")
+    .replace(/\{\{INGEST_TOKEN\}\}/g, apiKey || "<your-ingest-token>")
     .replace(/\{\{ENDPOINT\}\}/g, ENDPOINT_DEFAULT);
 }
 
 const pythonFrameworks = FRAMEWORKS.filter((f) => f.language === "python");
 const tsFrameworks = FRAMEWORKS.filter((f) => f.language === "typescript");
+const shellFrameworks = FRAMEWORKS.filter((f) => f.language === "shell");
 
 export function GettingStartedPanel({ projectId, onDismiss }: GettingStartedPanelProps) {
   const [step, setStep] = useState<Step>(0);
@@ -211,6 +213,15 @@ function StepInstall({ framework, onSelect, projectId, apiKey }: StepInstallProp
         <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">TypeScript</p>
         <div className="flex flex-wrap gap-2">
           {tsFrameworks.map((fw) => (
+            <FrameworkPill key={fw.id} fw={fw} selected={framework.id === fw.id} onSelect={onSelect} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">CLI Tools</p>
+        <div className="flex flex-wrap gap-2">
+          {shellFrameworks.map((fw) => (
             <FrameworkPill key={fw.id} fw={fw} selected={framework.id === fw.id} onSelect={onSelect} />
           ))}
         </div>

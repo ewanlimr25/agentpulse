@@ -65,6 +65,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Verify project_ingest_tokens schema migration has been applied.
+	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM project_ingest_tokens LIMIT 1"); err != nil {
+		slog.Error("project_ingest_tokens table not found — apply migration 012_ingest_tokens.up.sql before starting", "error", err)
+		os.Exit(1)
+	}
+
 	// ── Stores ────────────────────────────────────────────────────────────
 	spanStore := chstore.NewSpanStore(chConn)
 	runStore := chstore.NewRunStore(chConn)
@@ -88,6 +94,7 @@ func main() {
 	runAnnotationStore := pgstore.NewRunAnnotationStore(pgPool)
 	pushSubStore := pgstore.NewPushSubscriptionStore(pgPool)
 	emailDigestStore := pgstore.NewEmailDigestStore(pgPool)
+	ingestTokenStore := pgstore.NewIngestTokenStore(pgPool)
 
 	// ── Payload store (S3 offloading) ─────────────────────────────────────
 	var payloadStore store.PayloadStore
@@ -172,7 +179,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

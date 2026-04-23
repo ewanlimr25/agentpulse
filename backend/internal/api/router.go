@@ -42,6 +42,7 @@ func NewRouter(
 	runAnnotations store.RunAnnotationStore,
 	pushSubs store.PushSubscriptionStore,
 	emailDigests store.EmailDigestStore,
+	ingestTokens store.IngestTokenStore,
 	vapidPublicKey string,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
@@ -86,6 +87,7 @@ func NewRouter(
 	exportHandler := handler.NewExportHandler(exports, analytics)
 	pushHandler := handler.NewPushSubscriptionHandler(pushSubs, vapidPublicKey)
 	emailDigestHandler := handler.NewEmailDigestHandler(emailDigests)
+	ingestTokenHandler := handler.NewIngestTokenHandler(ingestTokens)
 
 	var playgroundHandler *handler.PlaygroundHandler
 	var modelsHandler *handler.ModelsHandler
@@ -164,6 +166,13 @@ func NewRouter(
 
 			r.Route("/notifications/email-digest", func(r chi.Router) {
 				emailDigestHandler.Routes(r)
+			})
+
+			// Ingest tokens — per-project credentials for authenticating OTel span ingestion.
+			r.Route("/ingest-tokens", func(r chi.Router) {
+				r.Post("/", ingestTokenHandler.Create)
+				r.Get("/", ingestTokenHandler.List)
+				r.Delete("/{tokenID}", ingestTokenHandler.Delete)
 			})
 
 			// Span feedback — human-in-the-loop ratings.

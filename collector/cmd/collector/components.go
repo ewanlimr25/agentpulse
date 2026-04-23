@@ -11,6 +11,7 @@ import (
 	"github.com/agentpulse/agentpulse/collector/exporter/clickhouseexporter"
 	"github.com/agentpulse/agentpulse/collector/exporter/topologyexporter"
 	"github.com/agentpulse/agentpulse/collector/processor/agentsemanticproc"
+	"github.com/agentpulse/agentpulse/collector/processor/authenforceproc"
 	"github.com/agentpulse/agentpulse/collector/processor/budgetenforceproc"
 	"github.com/agentpulse/agentpulse/collector/processor/piimaskerproc"
 	"github.com/agentpulse/agentpulse/collector/processor/ratelimitproc"
@@ -39,6 +40,7 @@ func components() (otelcol.Factories, error) {
 
 	// Processors
 	factories.Processors, err = otelcol.MakeFactoryMap(
+		authenforceproc.NewFactory(),    // ingest token authentication
 		ratelimitproc.NewFactory(),      // per-project ingestion rate limiting
 		agentsemanticproc.NewFactory(),  // agent span classification + cost
 		piimaskerproc.NewFactory(),      // PII / secret redaction
