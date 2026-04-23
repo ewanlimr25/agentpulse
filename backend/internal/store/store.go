@@ -305,3 +305,27 @@ type PlaygroundStore interface {
 	RecordExecution(ctx context.Context, e *domain.PlaygroundExecution) error
 	ListExecutionsByVariant(ctx context.Context, variantID string, limit int) ([]*domain.PlaygroundExecution, error)
 }
+
+// RetentionStore manages per-project retention configuration in Postgres.
+type RetentionStore interface {
+	Get(ctx context.Context, projectID string) (*domain.RetentionConfig, error)
+	Upsert(ctx context.Context, cfg *domain.RetentionConfig) error
+	ListAll(ctx context.Context) ([]*domain.RetentionConfig, error)
+}
+
+// PurgeJobStore manages async purge job records in Postgres.
+type PurgeJobStore interface {
+	Create(ctx context.Context, job *domain.PurgeJob) error
+	Get(ctx context.Context, id string) (*domain.PurgeJob, error)
+	UpdateStatus(ctx context.Context, id, status string) error
+	// Complete sets completed_at, spans_deleted, s3_keys_deleted, pg_rows_deleted,
+	// partial_failure, error_msg and marks the job as 'completed' or 'failed'.
+	Complete(ctx context.Context, id string, result *domain.PurgeJob) error
+}
+
+// StorageStatser computes storage usage across all stores for a project.
+// Implemented as a composite (not a thin interface over one store) because
+// it fans out to ClickHouse, Postgres, and S3.
+type StorageStatser interface {
+	GetStats(ctx context.Context, projectID string) (*domain.StorageStats, error)
+}

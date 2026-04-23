@@ -15,6 +15,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/llmclient"
 	"github.com/agentpulse/agentpulse/backend/internal/pricing"
+	"github.com/agentpulse/agentpulse/backend/internal/storage"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
@@ -43,6 +44,10 @@ func NewRouter(
 	pushSubs store.PushSubscriptionStore,
 	emailDigests store.EmailDigestStore,
 	ingestTokens store.IngestTokenStore,
+	retentionStore store.RetentionStore,
+	purgeJobStore store.PurgeJobStore,
+	statsService *storage.StatsService,
+	purgeExecutor *storage.PurgeExecutor,
 	vapidPublicKey string,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
@@ -88,6 +93,7 @@ func NewRouter(
 	pushHandler := handler.NewPushSubscriptionHandler(pushSubs, vapidPublicKey)
 	emailDigestHandler := handler.NewEmailDigestHandler(emailDigests)
 	ingestTokenHandler := handler.NewIngestTokenHandler(ingestTokens)
+	storageHandler := handler.NewStorageHandler(statsService, retentionStore, purgeJobStore, purgeExecutor)
 
 	var playgroundHandler *handler.PlaygroundHandler
 	var modelsHandler *handler.ModelsHandler
@@ -192,6 +198,11 @@ func NewRouter(
 			// All distinct tags used within the project (for filter dropdown population).
 			r.Get("/tags", runTagsHandler.ListProjectTags)
 
+			// Storage — stats, retention, and purge job status (reads use BearerAuth).
+			r.Get("/storage/stats", storageHandler.GetStats)
+			r.Get("/storage/retention", storageHandler.GetRetention)
+			r.Get("/storage/purge-jobs/{jobID}", storageHandler.GetPurgeJob)
+
 			// Prompt Playground — enabled only when pricing table + LLM client are configured.
 			if playgroundHandler != nil {
 				r.Route("/playground", func(r chi.Router) {
@@ -212,6 +223,14 @@ func NewRouter(
 		r.Route("/projects/{projectID}/settings", func(r chi.Router) {
 			r.Use(adminKeyAuth)
 			r.Put("/", settingsHandler.PutSettings)
+		})
+
+		// Storage mutations — require AdminKeyAuth.
+		r.Route("/projects/{projectID}/storage", func(r chi.Router) {
+			r.Use(adminKeyAuth)
+			r.Put("/retention", storageHandler.PutRetention)
+			r.Post("/purge/run/{runID}", storageHandler.PurgeRun)
+			r.Post("/purge/age", storageHandler.PurgeByAge)
 		})
 
 		// ── Run-scoped routes ─────────────────────────────────────────────────

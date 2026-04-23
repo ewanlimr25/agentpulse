@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse, PushSubscription, EmailDigestConfig } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse, PushSubscription, EmailDigestConfig, StorageStats, RetentionConfig, PurgeJob, DryRunResult } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -429,5 +429,64 @@ export const emailDigestApi = {
     apiFetch<EmailDigestConfig>(`/api/v1/projects/${projectId}/notifications/email-digest`, {
       method: "PUT",
       body: JSON.stringify(body),
+    }),
+};
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+
+export const storageApi = {
+  getStats: (projectId: string, apiKey: string): Promise<StorageStats> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/stats`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+
+  getRetention: (projectId: string, apiKey: string): Promise<RetentionConfig> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/retention`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+
+  updateRetention: (
+    projectId: string,
+    retentionDays: number,
+    apiKey: string,
+    adminKey: string
+  ): Promise<RetentionConfig> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/retention`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+      body: JSON.stringify({ retention_days: retentionDays }),
+    }),
+
+  purgeRun: (
+    projectId: string,
+    runId: string,
+    includeEvals: boolean,
+    dryRun: boolean,
+    apiKey: string,
+    adminKey: string
+  ): Promise<{ job_id: string } | DryRunResult> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/purge/run/${runId}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+      body: JSON.stringify({ include_evals: includeEvals, dry_run: dryRun }),
+    }),
+
+  purgeByAge: (
+    projectId: string,
+    beforeDays: number,
+    includeEvals: boolean,
+    dryRun: boolean,
+    apiKey: string,
+    adminKey: string
+  ): Promise<{ job_id: string } | DryRunResult> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/purge/age`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+      body: JSON.stringify({ before_days: beforeDays, include_evals: includeEvals, dry_run: dryRun }),
+    }),
+
+  getPurgeJob: (projectId: string, jobId: string, apiKey: string): Promise<PurgeJob> =>
+    apiFetch(`/api/v1/projects/${projectId}/storage/purge-jobs/${jobId}`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
     }),
 };

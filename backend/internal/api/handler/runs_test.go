@@ -150,6 +150,12 @@ func (f *fakePayloadStore) Get(_ context.Context, key string) ([]byte, error) {
 	return nil, fmt.Errorf("payload not found: %s", key)
 }
 
+func (f *fakePayloadStore) Delete(_ context.Context, _ string) error { return nil }
+
+func (f *fakePayloadStore) StatsByPrefix(_ context.Context, _ string) (int64, int64, error) {
+	return 0, 0, nil
+}
+
 // fakeProjectStore mirrors the middleware tests' mockProjectStore.
 type fakeProjectStore struct {
 	projects map[string]*domain.Project

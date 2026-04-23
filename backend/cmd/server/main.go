@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/alerteval"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
@@ -19,6 +21,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/loopdetect"
 	"github.com/agentpulse/agentpulse/backend/internal/pricing"
 	"github.com/agentpulse/agentpulse/backend/internal/pushnotify"
+	"github.com/agentpulse/agentpulse/backend/internal/storage"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
@@ -95,6 +98,8 @@ func main() {
 	pushSubStore := pgstore.NewPushSubscriptionStore(pgPool)
 	emailDigestStore := pgstore.NewEmailDigestStore(pgPool)
 	ingestTokenStore := pgstore.NewIngestTokenStore(pgPool)
+	retentionStore := pgstore.NewRetentionStore(pgPool)
+	purgeJobStore := pgstore.NewPurgeJobStore(pgPool)
 
 	// ── Payload store (S3 offloading) ─────────────────────────────────────
 	var payloadStore store.PayloadStore
@@ -107,6 +112,17 @@ func main() {
 		payloadStore = ps
 		slog.Info("S3 payload store initialized", "bucket", cfg.S3.Bucket)
 	}
+
+	// ── Storage management (retention + purge) ────────────────────────────
+	zapLogger, err := zap.NewProduction()
+	if err != nil {
+		slog.Error("zap logger init", "error", err)
+		os.Exit(1)
+	}
+	defer zapLogger.Sync() //nolint:errcheck
+	statsService := storage.NewStatsService(chConn, pgPool, payloadStore)
+	purgeExecutor := storage.NewPurgeExecutor(chConn, pgPool, payloadStore, purgeJobStore, runStore, zapLogger)
+	retentionEnforcer := storage.NewRetentionEnforcer(retentionStore, purgeJobStore, purgeExecutor, 6*time.Hour, zapLogger)
 
 	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -128,6 +144,9 @@ func main() {
 
 	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore, pushSender).Run(ctx)
 	slog.Info("alert evaluator started")
+
+	retentionEnforcer.Start(ctx)
+	slog.Info("retention enforcer started")
 
 	// ── Email digest sender ────────────────────────────────────────────────
 	emailDigestSender := emaildigest.NewSender(cfg.Email.ResendAPIKey, cfg.Email.FromAddress, emailDigestStore, alertRuleStore)
@@ -179,7 +198,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, retentionStore, purgeJobStore, statsService, purgeExecutor, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

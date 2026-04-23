@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { settingsApi } from "@/lib/api";
+import { getApiKey } from "@/lib/api-keys";
 import { useToast } from "@/components/toast/ToastContext";
+import { StorageSection } from "@/components/settings/StorageSection";
 import type { PIICustomRule } from "@/lib/types";
 
 interface Props {
@@ -122,7 +124,14 @@ function AddRuleForm({ onAdd, onCancel, isPending }: AddRuleFormProps) {
   );
 }
 
-export function SettingsSection({ projectId }: Props) {
+type SettingsTab = "security" | "storage";
+
+const TAB_LABELS: Record<SettingsTab, string> = {
+  security: "Security",
+  storage: "Storage",
+};
+
+function SecurityContent({ projectId }: Props) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -340,6 +349,50 @@ export function SettingsSection({ projectId }: Props) {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+export function SettingsSection({ projectId }: Props) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>("security");
+
+  const adminKey =
+    typeof window !== "undefined"
+      ? localStorage.getItem(`adminKey_${projectId}`)
+      : null;
+
+  const apiKey = getApiKey(projectId) ?? "";
+
+  const TABS: SettingsTab[] = ["security", "storage"];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Tab bar */}
+      <div className="flex gap-1 border-b border-[var(--border)]">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === tab
+                ? "border-indigo-500 text-[var(--text)]"
+                : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"
+            }`}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      {activeTab === "security" && <SecurityContent projectId={projectId} />}
+      {activeTab === "storage" && (
+        <StorageSection
+          projectId={projectId}
+          apiKey={apiKey}
+          adminKey={adminKey}
+        />
+      )}
     </div>
   );
 }

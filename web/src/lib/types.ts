@@ -592,3 +592,44 @@ export interface ModelInfo {
   output_per_million: number;
   available: boolean;
 }
+
+// ── Storage ───────────────────────────────────────────────────────────────────
+
+export interface StorageStats {
+  project_id: string;
+  span_row_count: number;
+  span_bytes_est: number;
+  topology_rows: number;
+  s3_object_count: number;
+  s3_bytes: number;
+  oldest_span_at: string | null;
+  newest_span_at: string | null;
+  stats_approximate: boolean;
+  computed_at: string;
+}
+
+export interface RetentionConfig {
+  project_id: string;
+  retention_days: number;
+  updated_at: string;
+}
+
+export interface PurgeJob {
+  id: string;
+  project_id: string;
+  run_id?: string;
+  cutoff_date?: string;
+  status: "pending" | "running" | "completed" | "failed";
+  include_evals: boolean;
+  spans_deleted: number;
+  s3_keys_deleted: number;
+  pg_rows_deleted: number;
+  partial_failure: boolean;
+  error_msg?: string;
+  started_at: string;
+  completed_at?: string;
+}
+
+export interface DryRunResult {
+  spans_to_delete: number;
+}
