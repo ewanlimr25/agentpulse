@@ -296,7 +296,30 @@ export interface AlertRule {
   WindowSeconds: number;
   ScopeFilter?: string;
   WebhookURL?: string;
+  SlackWebhookURL?: string;
+  DiscordWebhookURL?: string;
+  LastChannelError?: string;
+  LastChannelErrorAt?: string;
   Enabled: boolean;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
+export interface PushSubscription {
+  id: string;
+  projectId: string;
+  endpoint: string;
+  createdAt: string;
+}
+
+export interface EmailDigestConfig {
+  ID: string;
+  ProjectID: string;
+  Enabled: boolean;
+  RecipientEmail: string;
+  Schedule: "daily" | "hourly";
+  LastSentAt?: string;
+  LastError?: string;
   CreatedAt: string;
   UpdatedAt: string;
 }

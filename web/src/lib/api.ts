@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse, PushSubscription, EmailDigestConfig } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -199,7 +199,8 @@ export const alertsApi = {
     apiFetch<AlertRule[]>(`/api/v1/projects/${projectId}/alerts/rules`),
   createRule: (projectId: string, body: {
     name: string; signal_type: string; threshold: number; compare_op: string;
-    window_seconds: number; scope_filter?: string; webhook_url?: string; enabled: boolean;
+    window_seconds: number; scope_filter?: string; webhook_url?: string;
+    slack_webhook_url?: string; discord_webhook_url?: string; enabled: boolean;
   }) =>
     apiFetch<AlertRule>(`/api/v1/projects/${projectId}/alerts/rules`, {
       method: "POST",
@@ -207,7 +208,8 @@ export const alertsApi = {
     }),
   updateRule: (projectId: string, ruleId: string, body: {
     name: string; signal_type: string; threshold: number; compare_op: string;
-    window_seconds: number; scope_filter?: string; webhook_url?: string; enabled: boolean;
+    window_seconds: number; scope_filter?: string; webhook_url?: string;
+    slack_webhook_url?: string; discord_webhook_url?: string; enabled: boolean;
   }) =>
     apiFetch<AlertRule>(`/api/v1/projects/${projectId}/alerts/rules/${ruleId}`, {
       method: "PUT",
@@ -389,4 +391,43 @@ export const playgroundApi = {
 
 export const modelsApi = {
   list: () => apiFetch<ModelInfo[]>("/api/v1/models"),
+};
+
+// ── Push Notifications ────────────────────────────────────────────────────────
+
+export const pushApi = {
+  getVapidKey: (projectId: string) =>
+    apiFetch<{ key: string }>(`/api/v1/projects/${projectId}/push/vapid-public-key`),
+  subscribe: (projectId: string, body: {
+    endpoint: string;
+    p256dh_key: string;
+    auth_key: string;
+    vapid_public_key: string;
+    user_agent?: string;
+  }) =>
+    apiFetch<PushSubscription>(`/api/v1/projects/${projectId}/push/subscribe`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  unsubscribe: (projectId: string, endpoint: string) =>
+    apiFetch<void>(`/api/v1/projects/${projectId}/push/subscribe`, {
+      method: "DELETE",
+      body: JSON.stringify({ endpoint }),
+    }),
+};
+
+// ── Email Digest ──────────────────────────────────────────────────────────────
+
+export const emailDigestApi = {
+  get: (projectId: string) =>
+    apiFetch<EmailDigestConfig>(`/api/v1/projects/${projectId}/notifications/email-digest`),
+  upsert: (projectId: string, body: {
+    enabled: boolean;
+    recipient_email: string;
+    schedule: "daily" | "hourly";
+  }) =>
+    apiFetch<EmailDigestConfig>(`/api/v1/projects/${projectId}/notifications/email-digest`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };

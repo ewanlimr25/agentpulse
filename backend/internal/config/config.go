@@ -17,6 +17,21 @@ type Config struct {
 	OpenAIAPIKey    string
 	GoogleAIAPIKey  string
 	CORS            CORSConfig
+	WebPush         WebPushConfig
+	Email           EmailConfig
+}
+
+// WebPushConfig holds VAPID credentials for browser push notifications.
+type WebPushConfig struct {
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	Subject         string // mailto: or https: URI, required by VAPID spec
+}
+
+// EmailConfig holds credentials for transactional email delivery via Resend.
+type EmailConfig struct {
+	ResendAPIKey string
+	FromAddress  string
 }
 
 // String returns a human-readable representation of Config with all API key fields
@@ -101,6 +116,15 @@ func Load() (*Config, error) {
 		OpenAIAPIKey:    getEnv("OPENAI_API_KEY", ""),
 		GoogleAIAPIKey:  getEnv("GOOGLE_AI_API_KEY", ""),
 		CORS:            loadCORSConfig(),
+		WebPush: WebPushConfig{
+			VAPIDPublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
+			VAPIDPrivateKey: getEnv("VAPID_PRIVATE_KEY", ""),
+			Subject:         getEnv("VAPID_SUBJECT", ""),
+		},
+		Email: EmailConfig{
+			ResendAPIKey: getEnv("RESEND_API_KEY", ""),
+			FromAddress:  getEnv("EMAIL_FROM_ADDRESS", "noreply@agentpulse.dev"),
+		},
 	}
 
 	if err := cfg.validate(); err != nil {

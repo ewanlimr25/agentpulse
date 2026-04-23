@@ -30,6 +30,8 @@ export function AlertRulesTable({ projectId, onAddRule, onEditRule }: Props) {
         window_seconds: rule.WindowSeconds,
         scope_filter: rule.ScopeFilter,
         webhook_url: rule.WebhookURL,
+        slack_webhook_url: rule.SlackWebhookURL,
+        discord_webhook_url: rule.DiscordWebhookURL,
         enabled: !rule.Enabled,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["alertRules", projectId] }),
@@ -79,7 +81,19 @@ export function AlertRulesTable({ projectId, onAddRule, onEditRule }: Props) {
             <tbody>
               {rules.map((rule) => (
                 <tr key={rule.ID} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] transition-colors">
-                  <td className="px-4 py-3 text-[var(--text)] font-medium">{rule.Name}</td>
+                  <td className="px-4 py-3 text-[var(--text)] font-medium">
+                    <div className="flex items-center gap-1.5">
+                      {rule.Name}
+                      {rule.LastChannelError && (
+                        <span
+                          title={rule.LastChannelError}
+                          className="inline-flex items-center text-xs bg-red-950/50 text-red-400 border border-red-800/40 px-1.5 py-0.5 rounded-full cursor-help"
+                        >
+                          Channel error
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-[var(--text-muted)]">
                     <span className="bg-indigo-950/60 text-indigo-300 text-xs px-2 py-0.5 rounded-full">
                       {SIGNAL_LABELS[rule.SignalType]}

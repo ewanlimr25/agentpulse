@@ -137,6 +137,8 @@ type AlertRuleStore interface {
 	// LastEventForRule returns the most recent event for a rule, or nil if none.
 	LastEventForRule(ctx context.Context, ruleID string) (*domain.AlertEvent, error)
 	ListRecentEvents(ctx context.Context, projectID string, limit int) ([]*domain.RecentAlertEvent, error)
+	// UpdateChannelError records a delivery failure for a rule. Pass empty errMsg to clear.
+	UpdateChannelError(ctx context.Context, ruleID, errMsg string) error
 }
 
 // EvalJobStore manages the async eval work queue in Postgres.
@@ -242,6 +244,24 @@ type RunAnnotationStore interface {
 	GetByRuns(ctx context.Context, projectID string, runIDs []string) (map[string]*domain.RunAnnotation, error)
 	// Delete removes the annotation for a run. No-op if none exists.
 	Delete(ctx context.Context, projectID, runID string) error
+}
+
+// PushSubscriptionStore manages browser push subscriptions in Postgres.
+type PushSubscriptionStore interface {
+	Upsert(ctx context.Context, s *domain.PushSubscription) error
+	ListByProject(ctx context.Context, projectID string) ([]*domain.PushSubscription, error)
+	Delete(ctx context.Context, projectID, endpoint string) error
+}
+
+// EmailDigestStore manages per-project email digest configuration in Postgres.
+type EmailDigestStore interface {
+	Get(ctx context.Context, projectID string) (*domain.EmailDigestConfig, error)
+	Upsert(ctx context.Context, cfg *domain.EmailDigestConfig) error
+	// ListDue returns configs where it's time to send the next digest.
+	// Uses SELECT FOR UPDATE SKIP LOCKED for multi-replica safety.
+	ListDue(ctx context.Context) ([]*domain.EmailDigestConfig, error)
+	UpdateLastSent(ctx context.Context, projectID string) error
+	UpdateLastError(ctx context.Context, projectID, errMsg string) error
 }
 
 // ExportStore supports streaming data export from ClickHouse.

@@ -37,6 +37,11 @@ type AlertRule struct {
 	WebhookURL *string
 	Enabled    bool
 
+	SlackWebhookURL    *string
+	DiscordWebhookURL  *string
+	LastChannelError   *string
+	LastChannelErrorAt *time.Time
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

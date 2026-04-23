@@ -54,6 +54,7 @@ func (m *mockAlertRuleStore) ListRecentEvents(_ context.Context, projectID strin
 	m.lastProjectID = projectID
 	return m.recentEvents, m.recentEventsErr
 }
+func (m *mockAlertRuleStore) UpdateChannelError(_ context.Context, _, _ string) error { return nil }
 
 // ---------------------------------------------------------------------------
 // mockProjectStoreForAlerts — shares same shape as other mock project stores

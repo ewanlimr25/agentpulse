@@ -20,7 +20,8 @@ func NewAlertRuleStore(pool *pgxpool.Pool) *AlertRuleStore {
 }
 
 const alertRuleColumns = `id, project_id, name, signal_type, threshold, compare_op,
-	window_seconds, scope_filter, webhook_url, enabled, created_at, updated_at`
+	window_seconds, scope_filter, webhook_url, enabled, created_at, updated_at,
+	slack_webhook_url, discord_webhook_url, last_channel_error, last_channel_error_at`
 
 func scanAlertRule(row interface {
 	Scan(...any) error
@@ -29,6 +30,7 @@ func scanAlertRule(row interface {
 	err := row.Scan(
 		&r.ID, &r.ProjectID, &r.Name, &r.SignalType, &r.Threshold, &r.CompareOp,
 		&r.WindowSeconds, &r.ScopeFilter, &r.WebhookURL, &r.Enabled, &r.CreatedAt, &r.UpdatedAt,
+		&r.SlackWebhookURL, &r.DiscordWebhookURL, &r.LastChannelError, &r.LastChannelErrorAt,
 	)
 	return r, err
 }
@@ -69,10 +71,12 @@ func (s *AlertRuleStore) CreateRule(ctx context.Context, r *domain.AlertRule) er
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO alert_rules
 		  (id, project_id, name, signal_type, threshold, compare_op,
-		   window_seconds, scope_filter, webhook_url, enabled)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		   window_seconds, scope_filter, webhook_url, enabled,
+		   slack_webhook_url, discord_webhook_url)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 	`, r.ID, r.ProjectID, r.Name, r.SignalType, r.Threshold, r.CompareOp,
-		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.Enabled)
+		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.Enabled,
+		r.SlackWebhookURL, r.DiscordWebhookURL)
 	if err != nil {
 		return fmt.Errorf("alert_rule_store create_rule: %w", err)
 	}
@@ -83,12 +87,29 @@ func (s *AlertRuleStore) UpdateRule(ctx context.Context, r *domain.AlertRule) er
 	_, err := s.pool.Exec(ctx, `
 		UPDATE alert_rules
 		SET name=$2, signal_type=$3, threshold=$4, compare_op=$5,
-		    window_seconds=$6, scope_filter=$7, webhook_url=$8, enabled=$9, updated_at=now()
+		    window_seconds=$6, scope_filter=$7, webhook_url=$8, enabled=$9,
+		    slack_webhook_url=$10, discord_webhook_url=$11, updated_at=now()
 		WHERE id=$1
 	`, r.ID, r.Name, r.SignalType, r.Threshold, r.CompareOp,
-		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.Enabled)
+		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.Enabled,
+		r.SlackWebhookURL, r.DiscordWebhookURL)
 	if err != nil {
 		return fmt.Errorf("alert_rule_store update_rule: %w", err)
+	}
+	return nil
+}
+
+// UpdateChannelError records a delivery failure for a rule. Pass empty errMsg to clear.
+func (s *AlertRuleStore) UpdateChannelError(ctx context.Context, ruleID, errMsg string) error {
+	var errVal *string
+	if errMsg != "" {
+		errVal = &errMsg
+	}
+	_, err := s.pool.Exec(ctx, `
+		UPDATE alert_rules SET last_channel_error=$2, last_channel_error_at=CASE WHEN $2 IS NOT NULL THEN now() ELSE NULL END, updated_at=now() WHERE id=$1
+	`, ruleID, errVal)
+	if err != nil {
+		return fmt.Errorf("alert_rule_store update_channel_error: %w", err)
 	}
 	return nil
 }

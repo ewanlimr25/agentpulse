@@ -29,12 +29,15 @@ interface FormState {
   windowSeconds: number;
   scopeFilter: string;
   webhookURL: string;
+  slackWebhookURL: string;
+  discordWebhookURL: string;
   enabled: boolean;
 }
 
 const DEFAULT_FORM: FormState = {
   name: "", signalType: "error_rate", threshold: "", compareOp: "gt",
-  windowSeconds: 900, scopeFilter: "", webhookURL: "", enabled: true,
+  windowSeconds: 900, scopeFilter: "", webhookURL: "", slackWebhookURL: "",
+  discordWebhookURL: "", enabled: true,
 };
 
 function formFromRule(rule: AlertRule): FormState {
@@ -46,6 +49,8 @@ function formFromRule(rule: AlertRule): FormState {
     windowSeconds: rule.WindowSeconds,
     scopeFilter: rule.ScopeFilter ?? "",
     webhookURL: rule.WebhookURL ?? "",
+    slackWebhookURL: rule.SlackWebhookURL ?? "",
+    discordWebhookURL: rule.DiscordWebhookURL ?? "",
     enabled: rule.Enabled,
   };
 }
@@ -58,7 +63,7 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
   const [form, setForm] = useState<FormState>(() => editRule ? formFromRule(editRule) : DEFAULT_FORM);
   const [error, setError] = useState("");
 
-  const { name, signalType, threshold, compareOp, windowSeconds, scopeFilter, webhookURL, enabled } = form;
+  const { name, signalType, threshold, compareOp, windowSeconds, scopeFilter, webhookURL, slackWebhookURL, discordWebhookURL, enabled } = form;
 
   const mutation = useMutation({
     mutationFn: (body: Parameters<typeof alertsApi.createRule>[1]) =>
@@ -89,6 +94,8 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
       window_seconds: windowSeconds,
       scope_filter: scopeFilter.trim() || undefined,
       webhook_url: webhookURL.trim() || undefined,
+      slack_webhook_url: slackWebhookURL.trim() || undefined,
+      discord_webhook_url: discordWebhookURL.trim() || undefined,
       enabled: form.enabled,
     });
   }
@@ -206,6 +213,32 @@ export function AddAlertRuleModal({ projectId, isOpen, editRule, onClose }: Prop
               value={webhookURL}
               onChange={(e) => setForm((f) => ({ ...f, webhookURL: e.target.value }))}
               placeholder="https://hooks.example.com/..."
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">
+              Slack Webhook URL (optional)
+            </label>
+            <input
+              type="url"
+              value={slackWebhookURL}
+              onChange={(e) => setForm((f) => ({ ...f, slackWebhookURL: e.target.value }))}
+              placeholder="https://hooks.slack.com/services/..."
+              className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">
+              Discord Webhook URL (optional)
+            </label>
+            <input
+              type="url"
+              value={discordWebhookURL}
+              onChange={(e) => setForm((f) => ({ ...f, discordWebhookURL: e.target.value }))}
+              placeholder="https://discord.com/api/webhooks/..."
               className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] focus:outline-none focus:border-indigo-500"
             />
           </div>

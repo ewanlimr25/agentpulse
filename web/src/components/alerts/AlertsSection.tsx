@@ -5,6 +5,7 @@ import type { AlertRule } from "@/lib/types";
 import { AlertRulesTable } from "./AlertRulesTable";
 import { AlertEventsTable } from "./AlertEventsTable";
 import { AddAlertRuleModal } from "./AddAlertRuleModal";
+import { NotificationPreferences } from "./NotificationPreferences";
 import { useAlertWebSocket } from "@/hooks/useAlertWebSocket";
 
 // Extend the hook to also poll signal alert events for toast notifications.
@@ -35,6 +36,9 @@ export function AlertsSection({ projectId }: Props) {
       <div className="mt-8" />
 
       <AlertEventsTable projectId={projectId} />
+
+      <div className="mt-8" />
+      <NotificationPreferences projectId={projectId} />
 
       <AddAlertRuleModal
         key={editRule?.ID ?? (modalOpen ? "new" : "closed")}

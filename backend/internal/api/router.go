@@ -40,6 +40,9 @@ func NewRouter(
 	exports store.ExportStore,
 	runTags store.RunTagStore,
 	runAnnotations store.RunAnnotationStore,
+	pushSubs store.PushSubscriptionStore,
+	emailDigests store.EmailDigestStore,
+	vapidPublicKey string,
 	pgPool *pgxpool.Pool,
 	hub *alert.Hub,
 	corsAllowedOrigins []string,
@@ -81,6 +84,8 @@ func NewRouter(
 	spanFeedbackHandler := handler.NewSpanFeedbackHandler(spanFeedback)
 
 	exportHandler := handler.NewExportHandler(exports, analytics)
+	pushHandler := handler.NewPushSubscriptionHandler(pushSubs, vapidPublicKey)
+	emailDigestHandler := handler.NewEmailDigestHandler(emailDigests)
 
 	var playgroundHandler *handler.PlaygroundHandler
 	var modelsHandler *handler.ModelsHandler
@@ -151,6 +156,14 @@ func NewRouter(
 
 			r.Route("/export", func(r chi.Router) {
 				exportHandler.Routes(r)
+			})
+
+			r.Route("/push", func(r chi.Router) {
+				pushHandler.Routes(r)
+			})
+
+			r.Route("/notifications/email-digest", func(r chi.Router) {
+				emailDigestHandler.Routes(r)
 			})
 
 			// Span feedback — human-in-the-loop ratings.

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
+	"github.com/agentpulse/agentpulse/backend/internal/pushnotify"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 )
 
@@ -27,15 +30,18 @@ type Evaluator struct {
 	hub        *alert.Hub
 	httpClient *http.Client
 	loopStore  store.LoopStore
+	pushSender *pushnotify.Sender // nil when VAPID not configured
 }
 
-func NewEvaluator(ch driver.Conn, ruleStore store.AlertRuleStore, hub *alert.Hub, loopStore store.LoopStore) *Evaluator {
+// NewEvaluator returns a new Evaluator. pushSender may be nil to disable browser push notifications.
+func NewEvaluator(ch driver.Conn, ruleStore store.AlertRuleStore, hub *alert.Hub, loopStore store.LoopStore, pushSender *pushnotify.Sender) *Evaluator {
 	return &Evaluator{
 		ch:         ch,
 		ruleStore:  ruleStore,
 		hub:        hub,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 		loopStore:  loopStore,
+		pushSender: pushSender,
 	}
 }
 
@@ -126,6 +132,21 @@ func (e *Evaluator) evaluateRule(ctx context.Context, rule *domain.AlertRule) er
 		go e.fireWebhook(*rule.WebhookURL, evt)
 	}
 
+	// Fire Slack notification if configured
+	if rule.SlackWebhookURL != nil && *rule.SlackWebhookURL != "" {
+		go e.fireSlack(rule.ID, rule.Name, *rule.SlackWebhookURL, evt)
+	}
+
+	// Fire Discord notification if configured
+	if rule.DiscordWebhookURL != nil && *rule.DiscordWebhookURL != "" {
+		go e.fireDiscord(rule.ID, rule.Name, *rule.DiscordWebhookURL, evt)
+	}
+
+	// Fire browser push notification if sender is configured
+	if e.pushSender != nil {
+		go e.pushSender.Notify(context.Background(), rule.ProjectID, rule.Name, formatAlertMsg(evt))
+	}
+
 	slog.Info("alerteval fired", "rule_id", rule.ID, "signal", rule.SignalType,
 		"current", current, "threshold", rule.Threshold)
 	return nil
@@ -191,4 +212,112 @@ func (e *Evaluator) fireWebhook(url string, evt *domain.AlertEvent) {
 		return
 	}
 	resp.Body.Close()
+}
+
+// slackPayload is the JSON body sent to a Slack incoming webhook.
+type slackPayload struct {
+	Text   string       `json:"text"`
+	Blocks []slackBlock `json:"blocks"`
+}
+
+type slackBlock struct {
+	Type string          `json:"type"`
+	Text slackBlockText  `json:"text"`
+}
+
+type slackBlockText struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+// fireSlack posts an alert notification to a Slack incoming webhook.
+// The webhook URL must use the hooks.slack.com host.
+func (e *Evaluator) fireSlack(ruleID, ruleName, webhookURL string, evt *domain.AlertEvent) {
+	// Defence-in-depth: validate host even though the handler also validates.
+	if !strings.HasPrefix(webhookURL, "https://hooks.slack.com/") {
+		slog.Warn("alerteval slack skipped: unexpected host", "rule_id", ruleID, "url", webhookURL)
+		return
+	}
+
+	msg := fmt.Sprintf("*%s* fired: %s is %g (threshold: %g)",
+		ruleName, string(evt.SignalType), evt.CurrentValue, evt.Threshold)
+
+	payload := slackPayload{
+		Text: fmt.Sprintf("AgentPulse Alert: %s", ruleName),
+		Blocks: []slackBlock{
+			{
+				Type: "section",
+				Text: slackBlockText{Type: "mrkdwn", Text: msg},
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := e.httpClient.Post(webhookURL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("alerteval slack failed", "rule_id", ruleID, "error", err)
+		go e.updateChannelError(ruleID, fmt.Sprintf("slack: %s", err.Error()))
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		errMsg := fmt.Sprintf("slack non-2xx status=%d", resp.StatusCode)
+		slog.Warn("alerteval slack non-2xx", "rule_id", ruleID, "status", resp.StatusCode)
+		go e.updateChannelError(ruleID, errMsg)
+	}
+}
+
+// discordPayload is the JSON body sent to a Discord webhook.
+type discordPayload struct {
+	Embeds []discordEmbed `json:"embeds"`
+}
+
+type discordEmbed struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Color       int    `json:"color"`
+}
+
+const discordColorRed = 15548997
+
+// fireDiscord posts an alert notification to a Discord webhook.
+func (e *Evaluator) fireDiscord(ruleID, ruleName, webhookURL string, evt *domain.AlertEvent) {
+	desc := fmt.Sprintf("%s: %s is %g (threshold: %g)",
+		ruleName, string(evt.SignalType), evt.CurrentValue, evt.Threshold)
+
+	payload := discordPayload{
+		Embeds: []discordEmbed{
+			{
+				Title:       "AgentPulse Alert",
+				Description: desc,
+				Color:       discordColorRed,
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := e.httpClient.Post(webhookURL, "application/json", bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("alerteval discord failed", "rule_id", ruleID, "error", err)
+		go e.updateChannelError(ruleID, fmt.Sprintf("discord: %s", err.Error()))
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		errMsg := fmt.Sprintf("discord non-2xx status=%d", resp.StatusCode)
+		slog.Warn("alerteval discord non-2xx", "rule_id", ruleID, "status", resp.StatusCode)
+		go e.updateChannelError(ruleID, errMsg)
+	}
+}
+
+
+// updateChannelError persists a channel delivery error to the rule store.
+// Called in a goroutine; logs on failure rather than returning an error.
+func (e *Evaluator) updateChannelError(ruleID, errMsg string) {
+	if err := e.ruleStore.UpdateChannelError(context.Background(), ruleID, errMsg); err != nil {
+		slog.Warn("alerteval update_channel_error", "rule_id", ruleID, "error", err)
+	}
+}
+
+// formatAlertMsg returns a short human-readable description of an alert event.
+func formatAlertMsg(evt *domain.AlertEvent) string {
+	return fmt.Sprintf("%s is %g (threshold: %g)", string(evt.SignalType), evt.CurrentValue, evt.Threshold)
 }

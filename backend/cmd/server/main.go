@@ -13,10 +13,12 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/alerteval"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
+	"github.com/agentpulse/agentpulse/backend/internal/emaildigest"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/llmclient"
 	"github.com/agentpulse/agentpulse/backend/internal/loopdetect"
 	"github.com/agentpulse/agentpulse/backend/internal/pricing"
+	"github.com/agentpulse/agentpulse/backend/internal/pushnotify"
 	"github.com/agentpulse/agentpulse/backend/internal/store"
 	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
 	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
@@ -57,6 +59,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Verify push_subscriptions schema migration has been applied.
+	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM push_subscriptions LIMIT 1"); err != nil {
+		slog.Error("push_subscriptions table not found — apply migration 013_push_subscriptions.up.sql", "error", err)
+		os.Exit(1)
+	}
+
 	// ── Stores ────────────────────────────────────────────────────────────
 	spanStore := chstore.NewSpanStore(chConn)
 	runStore := chstore.NewRunStore(chConn)
@@ -78,6 +86,8 @@ func main() {
 	playgroundStore := pgstore.NewPlaygroundStore(pgPool)
 	runTagStore := pgstore.NewRunTagStore(pgPool)
 	runAnnotationStore := pgstore.NewRunAnnotationStore(pgPool)
+	pushSubStore := pgstore.NewPushSubscriptionStore(pgPool)
+	emailDigestStore := pgstore.NewEmailDigestStore(pgPool)
 
 	// ── Payload store (S3 offloading) ─────────────────────────────────────
 	var payloadStore store.PayloadStore
@@ -99,8 +109,22 @@ func main() {
 	hub := alert.NewHub(projectStore)
 	go hub.Run()
 	go alert.NewPoller(pgPool, hub).Run(ctx)
-	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore).Run(ctx)
+
+	// ── Browser push notifications ─────────────────────────────────────────
+	var pushSender *pushnotify.Sender
+	if cfg.WebPush.VAPIDPublicKey != "" && cfg.WebPush.VAPIDPrivateKey != "" {
+		pushSender = pushnotify.NewSender(cfg.WebPush.VAPIDPublicKey, cfg.WebPush.VAPIDPrivateKey, cfg.WebPush.Subject, pushSubStore)
+		slog.Info("browser push notifications enabled")
+	} else {
+		slog.Info("browser push notifications disabled (VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set)")
+	}
+
+	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore, pushSender).Run(ctx)
 	slog.Info("alert evaluator started")
+
+	// ── Email digest sender ────────────────────────────────────────────────
+	emailDigestSender := emaildigest.NewSender(cfg.Email.ResendAPIKey, cfg.Email.FromAddress, emailDigestStore, alertRuleStore)
+	go emailDigestSender.Run(ctx)
 	go loopdetect.NewDetector(chConn, pgPool, loopStore, topologyStore, projectStore).Run(ctx)
 	slog.Info("loop detector started")
 
@@ -148,7 +172,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),

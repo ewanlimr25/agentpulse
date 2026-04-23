@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -55,14 +56,16 @@ func (h *AlertRuleHandler) listRules(w http.ResponseWriter, r *http.Request) {
 }
 
 type alertRuleRequest struct {
-	Name          string             `json:"name"`
-	SignalType    domain.SignalType  `json:"signal_type"`
-	Threshold     float64            `json:"threshold"`
-	CompareOp     domain.CompareOp   `json:"compare_op"`
-	WindowSeconds int                `json:"window_seconds"`
-	ScopeFilter   *string            `json:"scope_filter,omitempty"`
-	WebhookURL    *string            `json:"webhook_url,omitempty"`
-	Enabled       bool               `json:"enabled"`
+	Name              string            `json:"name"`
+	SignalType        domain.SignalType `json:"signal_type"`
+	Threshold         float64           `json:"threshold"`
+	CompareOp         domain.CompareOp  `json:"compare_op"`
+	WindowSeconds     int               `json:"window_seconds"`
+	ScopeFilter       *string           `json:"scope_filter,omitempty"`
+	WebhookURL        *string           `json:"webhook_url,omitempty"`
+	SlackWebhookURL   *string           `json:"slack_webhook_url,omitempty"`
+	DiscordWebhookURL *string           `json:"discord_webhook_url,omitempty"`
+	Enabled           bool              `json:"enabled"`
 }
 
 func (req *alertRuleRequest) validate() string {
@@ -90,6 +93,11 @@ func (req *alertRuleRequest) validate() string {
 	if req.SignalType == domain.SignalTypeToolFailure && (req.ScopeFilter == nil || *req.ScopeFilter == "") {
 		return "scope_filter (tool name) is required for tool_failure signal type"
 	}
+	if req.SlackWebhookURL != nil && *req.SlackWebhookURL != "" {
+		if !strings.HasPrefix(*req.SlackWebhookURL, "https://hooks.slack.com/services/") {
+			return "slack_webhook_url must start with https://hooks.slack.com/services/"
+		}
+	}
 	return ""
 }
 
@@ -113,18 +121,20 @@ func (h *AlertRuleHandler) createRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rule := &domain.AlertRule{
-		ID:            uuid.New().String(),
-		ProjectID:     projectID,
-		Name:          req.Name,
-		SignalType:    req.SignalType,
-		Threshold:     req.Threshold,
-		CompareOp:     req.CompareOp,
-		WindowSeconds: req.WindowSeconds,
-		ScopeFilter:   req.ScopeFilter,
-		WebhookURL:    req.WebhookURL,
-		Enabled:       req.Enabled,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		ID:                uuid.New().String(),
+		ProjectID:         projectID,
+		Name:              req.Name,
+		SignalType:        req.SignalType,
+		Threshold:         req.Threshold,
+		CompareOp:         req.CompareOp,
+		WindowSeconds:     req.WindowSeconds,
+		ScopeFilter:       req.ScopeFilter,
+		WebhookURL:        req.WebhookURL,
+		SlackWebhookURL:   req.SlackWebhookURL,
+		DiscordWebhookURL: req.DiscordWebhookURL,
+		Enabled:           req.Enabled,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	if err := h.rules.CreateRule(r.Context(), rule); err != nil {
@@ -171,6 +181,8 @@ func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 	existing.WindowSeconds = req.WindowSeconds
 	existing.ScopeFilter = req.ScopeFilter
 	existing.WebhookURL = req.WebhookURL
+	existing.SlackWebhookURL = req.SlackWebhookURL
+	existing.DiscordWebhookURL = req.DiscordWebhookURL
 	existing.Enabled = req.Enabled
 	existing.UpdatedAt = time.Now()
 
