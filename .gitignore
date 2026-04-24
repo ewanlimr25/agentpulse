@@ -20,6 +20,9 @@ web/out/
 .env.local
 .env.*.local
 
+# Generated per-clone credentials (written by scripts/init.sh)
+docker-compose.override.yml
+
 # macOS
 .DS_Store
 

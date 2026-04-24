@@ -22,20 +22,74 @@ if [ -f "$MARKER_FILE" ]; then
     exit 0
 fi
 
-# ── Step 2: Start Docker services ─────────────────────────────────────────────
+# ── Step 2: Generate random credentials ───────────────────────────────────────
+
+ENV_FILE="$REPO_ROOT/.env"
+OVERRIDE_FILE="$REPO_ROOT/docker-compose.override.yml"
+
+# Check whether .env already has non-default credentials
+if [ -f "$ENV_FILE" ] && ! grep -q "agentpulse:agentpulse" "$ENV_FILE"; then
+    echo "Credentials already set in $ENV_FILE — skipping credential generation."
+else
+    echo "Generating random credentials..."
+    POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+    CLICKHOUSE_PASSWORD="$(openssl rand -hex 32)"
+    S3_SECRET_KEY="$(openssl rand -hex 32)"
+
+    # Write (or overwrite) credential lines in .env
+    # Remove any existing credential lines so we can append fresh ones
+    if [ -f "$ENV_FILE" ]; then
+        # Remove lines for the three keys before re-appending
+        TMP_ENV="$(grep -v '^POSTGRES_DSN=' "$ENV_FILE" | grep -v '^CLICKHOUSE_PASSWORD=' | grep -v '^S3_SECRET_KEY=')"
+        printf '%s\n' "$TMP_ENV" > "$ENV_FILE"
+    fi
+    cat >> "$ENV_FILE" <<ENVEOF
+POSTGRES_DSN=postgres://agentpulse:${POSTGRES_PASSWORD}@localhost:5432/agentpulse?sslmode=disable
+CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+S3_SECRET_KEY=${S3_SECRET_KEY}
+ENVEOF
+    echo "Credentials written to $ENV_FILE"
+fi
+
+# Write docker-compose.override.yml if it doesn't already exist
+if [ ! -f "$OVERRIDE_FILE" ]; then
+    # Read credentials from .env for the override file
+    POSTGRES_PASSWORD="$(grep '^POSTGRES_DSN=' "$ENV_FILE" | sed 's|.*agentpulse:\([^@]*\)@.*|\1|')"
+    CLICKHOUSE_PASSWORD="$(grep '^CLICKHOUSE_PASSWORD=' "$ENV_FILE" | cut -d= -f2)"
+    cat > "$OVERRIDE_FILE" <<OVERRIDEEOF
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  clickhouse:
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+OVERRIDEEOF
+    echo "Credentials written to $OVERRIDE_FILE (gitignored)"
+else
+    echo "$OVERRIDE_FILE already exists — skipping."
+fi
+
+echo ""
+echo "Credentials are stored in:"
+echo "  $ENV_FILE  (loaded by the backend at runtime)"
+echo "  $OVERRIDE_FILE  (picked up by docker compose automatically)"
+echo ""
+
+# ── Step 3: Start Docker services ─────────────────────────────────────────────
 
 echo "Starting Docker services (ClickHouse, Postgres, MinIO, OTel Collector)..."
 cd "$REPO_ROOT"
 docker compose up -d --wait 2>&1 | grep -v "already in use" || true
 echo "Docker services started."
 
-# ── Step 3: Run database migrations ───────────────────────────────────────────
+# ── Step 4: Run database migrations ───────────────────────────────────────────
 
 echo "Applying database migrations..."
 make migrate-up
 echo "Database migrations complete."
 
-# ── Step 4: Poll backend health endpoint ──────────────────────────────────────
+# ── Step 5: Poll backend health endpoint ──────────────────────────────────────
 
 echo "Waiting for backend to be ready (max 30 attempts, 2s between)..."
 
@@ -74,7 +128,7 @@ if [ $BACKEND_READY -eq 0 ]; then
     exit 1
 fi
 
-# ── Step 5: Create demo project ───────────────────────────────────────────────
+# ── Step 6: Create demo project ───────────────────────────────────────────────
 
 echo "Creating demo project..."
 
@@ -94,7 +148,7 @@ fi
 
 echo "Project created: $PROJECT_ID"
 
-# ── Step 6: Write web/.env.local ──────────────────────────────────────────────
+# ── Step 7: Write web/.env.local ──────────────────────────────────────────────
 
 WEB_ENV_FILE="$REPO_ROOT/web/.env.local"
 
@@ -111,7 +165,7 @@ if ! grep -q "\.env\.local" "$REPO_ROOT/.gitignore"; then
     echo -e "${AMBER}Warning: web/.env.local may not be in .gitignore${RESET}"
 fi
 
-# ── Step 7: Success banner ────────────────────────────────────────────────────
+# ── Step 8: Success banner ────────────────────────────────────────────────────
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════════════════╗"
@@ -139,7 +193,7 @@ echo ""
 echo "Local dashboard: http://localhost:3000"
 echo ""
 
-# ── Step 8: Create marker file ────────────────────────────────────────────────
+# ── Step 9: Create marker file ────────────────────────────────────────────────
 
 touch "$MARKER_FILE"
 
