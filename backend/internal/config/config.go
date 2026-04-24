@@ -65,8 +65,10 @@ type CORSConfig struct {
 }
 
 type HTTPConfig struct {
-	Host string
-	Port string
+	Host    string
+	Port    string
+	TLSCert string // HTTP_TLS_CERT env var — path to TLS cert file
+	TLSKey  string // HTTP_TLS_KEY env var — path to TLS key file
 }
 
 type PostgresConfig struct {
@@ -93,8 +95,10 @@ type S3Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		HTTP: HTTPConfig{
-			Host: getEnv("HTTP_HOST", "0.0.0.0"),
-			Port: getEnv("HTTP_PORT", "8080"),
+			Host:    getEnv("HTTP_HOST", "0.0.0.0"),
+			Port:    getEnv("HTTP_PORT", "8080"),
+			TLSCert: getEnv("HTTP_TLS_CERT", ""),
+			TLSKey:  getEnv("HTTP_TLS_KEY", ""),
 		},
 		Postgres: PostgresConfig{
 			DSN: getEnv("POSTGRES_DSN", "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"),
@@ -160,6 +164,22 @@ func (c *Config) WarnDefaults(warn func(msg string, args ...any)) {
 	}
 	if c.S3.SecretKey == "agentpulse" {
 		warn("S3_SECRET_KEY uses default credential — set S3_SECRET_KEY for production")
+	}
+}
+
+func (c *Config) TLSEnabled() bool {
+	return c.HTTP.TLSCert != "" && c.HTTP.TLSKey != ""
+}
+
+func (c *Config) ErrorDefaults(fatal func(msg string, args ...any)) {
+	if strings.Contains(c.Postgres.DSN, "agentpulse:agentpulse") {
+		fatal("POSTGRES_DSN uses default credentials in production — set POSTGRES_DSN")
+	}
+	if c.ClickHouse.Password == "agentpulse" {
+		fatal("CLICKHOUSE_PASSWORD uses default credential in production — set CLICKHOUSE_PASSWORD")
+	}
+	if c.S3.SecretKey == "agentpulse" {
+		fatal("S3_SECRET_KEY uses default credential in production — set S3_SECRET_KEY")
 	}
 }
 
