@@ -14,6 +14,12 @@ receivers:
         endpoint: "0.0.0.0:4318"
 
 processors:
+  # Token validation disabled in dev — no token required for local runs
+  authenforceproc:
+    dsn: "postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable"
+    enabled: false
+    fail_open: true
+
   # Generous limits in dev to avoid throttling local runs
   ratelimitproc:
     rate_per_second: 1000
@@ -52,7 +58,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
+      processors: [authenforceproc, ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
     traces/debug:
       receivers:  [otlp]

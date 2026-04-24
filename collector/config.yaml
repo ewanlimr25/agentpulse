@@ -19,6 +19,12 @@ receivers:
         endpoint: "0.0.0.0:4318"   # HTTP/protobuf — for browser/HTTP clients
 
 processors:
+  # 0. Validate ingest token — reject unauthenticated spans before consuming rate-limit budget
+  authenforceproc:
+    dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
+    enabled: true
+    fail_open: false  # fail-closed in production: drop spans when DB is unreachable
+
   # 1. Rate-limit ingestion per project (must be first — before batch buffers memory)
   ratelimitproc:
     rate_per_second: 100
@@ -81,7 +87,7 @@ service:
   pipelines:
     traces:
       receivers:  [otlp]
-      processors: [ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
+      processors: [authenforceproc, ratelimitproc, batch, agentsemanticproc, piimaskerproc, budgetenforceproc]
       exporters:  [clickhouseexporter, topologyexporter]
 
     # Separate debug pipeline — disable by removing this block in production
