@@ -76,7 +76,6 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
-    profiles: ["full"] # Only start with: docker compose --profile full up
 
   minio-init:
     image: minio/mc:latest
