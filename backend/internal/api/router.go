@@ -11,6 +11,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/api/handler"
 	"github.com/agentpulse/agentpulse/backend/internal/api/middleware"
+	"github.com/agentpulse/agentpulse/backend/internal/audit"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
 	"github.com/agentpulse/agentpulse/backend/internal/httputil"
 	"github.com/agentpulse/agentpulse/backend/internal/llmclient"
@@ -56,6 +57,7 @@ func NewRouter(
 	providerKeys eval.ProviderKeys,
 	llm llmclient.Client,
 	pricingTable *pricing.Table,
+	auditWriter *audit.Writer,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -63,6 +65,10 @@ func NewRouter(
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.NewCORS(corsAllowedOrigins, corsDevMode))
 	r.Use(middleware.Logger)
+	r.Use(middleware.Audit(auditWriter))
+	// CSRF: all auth today is Bearer-only (no cookies). If cookie sessions are ever
+	// added, wire chi's csrf middleware here before any state-changing routes.
+	// Example: r.Use(csrf.Protect([]byte(cfg.CSRFKey), csrf.Secure(true)))
 
 	// Health check — always public
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

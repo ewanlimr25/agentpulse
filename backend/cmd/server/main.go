@@ -14,6 +14,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/alert"
 	"github.com/agentpulse/agentpulse/backend/internal/alerteval"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
+	"github.com/agentpulse/agentpulse/backend/internal/audit"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
 	"github.com/agentpulse/agentpulse/backend/internal/emaildigest"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
@@ -54,6 +55,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer chConn.Close()
+
+	auditWriter := audit.NewWriter(chConn)
 
 	pgPool, err := pgstore.Open(cfg.Postgres)
 	if err != nil {
@@ -204,7 +207,7 @@ func main() {
 	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
 		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
 	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, retentionStore, purgeJobStore, statsService, purgeExecutor, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable)
+	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, retentionStore, purgeJobStore, statsService, purgeExecutor, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable, auditWriter)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
