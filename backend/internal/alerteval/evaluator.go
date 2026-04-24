@@ -3,10 +3,14 @@ package alerteval
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -129,7 +133,7 @@ func (e *Evaluator) evaluateRule(ctx context.Context, rule *domain.AlertRule) er
 
 	// Fire webhook if configured
 	if rule.WebhookURL != nil && *rule.WebhookURL != "" {
-		go e.fireWebhook(*rule.WebhookURL, evt)
+		go e.fireWebhook(rule, evt)
 	}
 
 	// Fire Slack notification if configured
@@ -194,7 +198,17 @@ type webhookPayload struct {
 	TriggeredAt  string  `json:"triggered_at"`
 }
 
-func (e *Evaluator) fireWebhook(url string, evt *domain.AlertEvent) {
+// signBody computes an HMAC-SHA256 signature over timestamp + "\n" + body.
+// The returned string has the form "sha256=<hex>".
+func signBody(secret string, timestamp int64, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(strconv.FormatInt(timestamp, 10)))
+	mac.Write([]byte("\n"))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func (e *Evaluator) fireWebhook(rule *domain.AlertRule, evt *domain.AlertEvent) {
 	payload := webhookPayload{
 		EventID:      evt.ID,
 		RuleID:       evt.RuleID,
@@ -206,9 +220,24 @@ func (e *Evaluator) fireWebhook(url string, evt *domain.AlertEvent) {
 		TriggeredAt:  evt.TriggeredAt.UTC().Format(time.RFC3339),
 	}
 	body, _ := json.Marshal(payload)
-	resp, err := e.httpClient.Post(url, "application/json", bytes.NewReader(body))
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, *rule.WebhookURL, bytes.NewReader(body))
 	if err != nil {
-		slog.Warn("alerteval webhook failed", "url", url, "error", err)
+		slog.Warn("alerteval webhook build_request failed", "url", *rule.WebhookURL, "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if rule.WebhookSecret != nil && *rule.WebhookSecret != "" {
+		ts := time.Now().Unix()
+		sig := signBody(*rule.WebhookSecret, ts, body)
+		req.Header.Set("X-AgentPulse-Signature", sig)
+		req.Header.Set("X-AgentPulse-Timestamp", strconv.FormatInt(ts, 10))
+	}
+
+	resp, err := e.httpClient.Do(req)
+	if err != nil {
+		slog.Warn("alerteval webhook failed", "url", *rule.WebhookURL, "error", err)
 		return
 	}
 	resp.Body.Close()

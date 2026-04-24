@@ -52,7 +52,11 @@ func (h *AlertRuleHandler) listRules(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "failed to list alert rules")
 		return
 	}
-	httputil.JSON(w, http.StatusOK, rules)
+	out := make([]alertRuleResponse, len(rules))
+	for i, rule := range rules {
+		out[i] = toAlertRuleResponse(rule)
+	}
+	httputil.JSON(w, http.StatusOK, out)
 }
 
 type alertRuleRequest struct {
@@ -66,6 +70,46 @@ type alertRuleRequest struct {
 	SlackWebhookURL   *string           `json:"slack_webhook_url,omitempty"`
 	DiscordWebhookURL *string           `json:"discord_webhook_url,omitempty"`
 	Enabled           bool              `json:"enabled"`
+}
+
+type alertRuleResponse struct {
+	ID                string            `json:"id"`
+	ProjectID         string            `json:"project_id"`
+	Name              string            `json:"name"`
+	SignalType        domain.SignalType `json:"signal_type"`
+	Threshold         float64           `json:"threshold"`
+	CompareOp         domain.CompareOp  `json:"compare_op"`
+	WindowSeconds     int               `json:"window_seconds"`
+	ScopeFilter       *string           `json:"scope_filter,omitempty"`
+	WebhookURL        *string           `json:"webhook_url,omitempty"`
+	WebhookSecret     *string           `json:"webhook_secret,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	SlackWebhookURL   *string           `json:"slack_webhook_url,omitempty"`
+	DiscordWebhookURL *string           `json:"discord_webhook_url,omitempty"`
+	LastChannelError  *string           `json:"last_channel_error,omitempty"`
+	CreatedAt         time.Time         `json:"created_at"`
+	UpdatedAt         time.Time         `json:"updated_at"`
+}
+
+func toAlertRuleResponse(r *domain.AlertRule) alertRuleResponse {
+	return alertRuleResponse{
+		ID:                r.ID,
+		ProjectID:         r.ProjectID,
+		Name:              r.Name,
+		SignalType:        r.SignalType,
+		Threshold:         r.Threshold,
+		CompareOp:         r.CompareOp,
+		WindowSeconds:     r.WindowSeconds,
+		ScopeFilter:       r.ScopeFilter,
+		WebhookURL:        r.WebhookURL,
+		WebhookSecret:     r.WebhookSecret,
+		Enabled:           r.Enabled,
+		SlackWebhookURL:   r.SlackWebhookURL,
+		DiscordWebhookURL: r.DiscordWebhookURL,
+		LastChannelError:  r.LastChannelError,
+		CreatedAt:         r.CreatedAt,
+		UpdatedAt:         r.UpdatedAt,
+	}
 }
 
 func (req *alertRuleRequest) validate() string {
@@ -141,7 +185,7 @@ func (h *AlertRuleHandler) createRule(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "failed to create alert rule")
 		return
 	}
-	httputil.JSON(w, http.StatusCreated, rule)
+	httputil.JSON(w, http.StatusCreated, toAlertRuleResponse(rule))
 }
 
 func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
@@ -190,7 +234,7 @@ func (h *AlertRuleHandler) updateRule(w http.ResponseWriter, r *http.Request) {
 		httputil.Error(w, http.StatusInternalServerError, "failed to update alert rule")
 		return
 	}
-	httputil.JSON(w, http.StatusOK, existing)
+	httputil.JSON(w, http.StatusOK, toAlertRuleResponse(existing))
 }
 
 func (h *AlertRuleHandler) deleteRule(w http.ResponseWriter, r *http.Request) {

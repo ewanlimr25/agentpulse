@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -20,7 +22,7 @@ func NewAlertRuleStore(pool *pgxpool.Pool) *AlertRuleStore {
 }
 
 const alertRuleColumns = `id, project_id, name, signal_type, threshold, compare_op,
-	window_seconds, scope_filter, webhook_url, enabled, created_at, updated_at,
+	window_seconds, scope_filter, webhook_url, webhook_secret, enabled, created_at, updated_at,
 	slack_webhook_url, discord_webhook_url, last_channel_error, last_channel_error_at`
 
 func scanAlertRule(row interface {
@@ -29,10 +31,19 @@ func scanAlertRule(row interface {
 	r := &domain.AlertRule{}
 	err := row.Scan(
 		&r.ID, &r.ProjectID, &r.Name, &r.SignalType, &r.Threshold, &r.CompareOp,
-		&r.WindowSeconds, &r.ScopeFilter, &r.WebhookURL, &r.Enabled, &r.CreatedAt, &r.UpdatedAt,
+		&r.WindowSeconds, &r.ScopeFilter, &r.WebhookURL, &r.WebhookSecret, &r.Enabled, &r.CreatedAt, &r.UpdatedAt,
 		&r.SlackWebhookURL, &r.DiscordWebhookURL, &r.LastChannelError, &r.LastChannelErrorAt,
 	)
 	return r, err
+}
+
+// generateWebhookSecret creates a cryptographically random 32-byte hex secret.
+func generateWebhookSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate_webhook_secret: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *AlertRuleStore) ListRules(ctx context.Context, projectID string) ([]*domain.AlertRule, error) {
@@ -68,14 +79,23 @@ func (s *AlertRuleStore) GetRule(ctx context.Context, id string) (*domain.AlertR
 }
 
 func (s *AlertRuleStore) CreateRule(ctx context.Context, r *domain.AlertRule) error {
+	// Auto-generate a signing secret for rules with a webhook URL.
+	if r.WebhookURL != nil && *r.WebhookURL != "" && r.WebhookSecret == nil {
+		secret, err := generateWebhookSecret()
+		if err != nil {
+			return err
+		}
+		r.WebhookSecret = &secret
+	}
+
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO alert_rules
 		  (id, project_id, name, signal_type, threshold, compare_op,
-		   window_seconds, scope_filter, webhook_url, enabled,
+		   window_seconds, scope_filter, webhook_url, webhook_secret, enabled,
 		   slack_webhook_url, discord_webhook_url)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 	`, r.ID, r.ProjectID, r.Name, r.SignalType, r.Threshold, r.CompareOp,
-		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.Enabled,
+		r.WindowSeconds, r.ScopeFilter, r.WebhookURL, r.WebhookSecret, r.Enabled,
 		r.SlackWebhookURL, r.DiscordWebhookURL)
 	if err != nil {
 		return fmt.Errorf("alert_rule_store create_rule: %w", err)

@@ -34,8 +34,9 @@ type AlertRule struct {
 	WindowSeconds int     // rolling window for signal computation
 	ScopeFilter   *string // tool name — required when SignalType is tool_failure
 
-	WebhookURL *string
-	Enabled    bool
+	WebhookURL    *string
+	WebhookSecret *string // HMAC-SHA256 signing key, auto-generated on rule creation
+	Enabled       bool
 
 	SlackWebhookURL    *string
 	DiscordWebhookURL  *string
