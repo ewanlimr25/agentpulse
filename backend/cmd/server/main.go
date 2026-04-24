@@ -40,6 +40,12 @@ func main() {
 		os.Exit(1)
 	}
 	cfg.WarnDefaults(slog.Warn)
+	if os.Getenv("APP_ENV") == "production" {
+		cfg.ErrorDefaults(func(msg string, args ...any) {
+			slog.Error(msg, args...)
+			os.Exit(1)
+		})
+	}
 
 	// ── Storage connections ────────────────────────────────────────────────
 	chConn, err := chstore.Open(cfg.ClickHouse)
@@ -209,10 +215,18 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("starting AgentPulse API", "addr", cfg.HTTPAddr())
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
-			os.Exit(1)
+		if cfg.TLSEnabled() {
+			slog.Info("starting AgentPulse API (TLS)", "addr", cfg.HTTPAddr())
+			if err := srv.ListenAndServeTLS(cfg.HTTP.TLSCert, cfg.HTTP.TLSKey); err != nil && err != http.ErrServerClosed {
+				slog.Error("server error", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			slog.Info("starting AgentPulse API (HTTP — ensure a TLS-terminating proxy is in front)", "addr", cfg.HTTPAddr())
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("server error", "error", err)
+				os.Exit(1)
+			}
 		}
 	}()
 
