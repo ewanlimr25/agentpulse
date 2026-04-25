@@ -1,4 +1,4 @@
-import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse, PushSubscription, EmailDigestConfig, StorageStats, RetentionConfig, PurgeJob, DryRunResult } from "./types";
+import type { Project, Run, RunLoop, RunsListResponse, Span, Topology, BudgetRule, BudgetAlert, RecentBudgetAlert, SpanEval, SpanEvalGroup, RunEvalSummary, EvalConfig, EvalDryRunResult, AlertRule, AlertEvent, RecentAlertEvent, ToolStats, AgentCostStats, AnalyticsWindow, Session, SessionsListResponse, UserStats, UsersListResponse, RunComparison, RunPromptDiff, ReplayBundle, SearchResponse, ProjectPIIConfig, PIICustomRule, SpanFeedback, FeedbackRequest, ProjectHealth, PlaygroundSession, PlaygroundSessionsListResponse, PlaygroundVariant, PlaygroundExecution, PlaygroundMessage, ModelInfo, ModelStatsResponse, PushSubscription, EmailDigestConfig, StorageStats, RetentionConfig, PurgeJob, DryRunResult, IngestToken, CreateIngestTokenResponse, LoopConfig } from "./types";
 import { getApiKey } from "./api-keys";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
@@ -148,6 +148,15 @@ export const evalsApi = {
   deleteConfig: (projectId: string, evalName: string) =>
     apiFetch<{ deleted: string }>(`/api/v1/projects/${projectId}/evals/config/${encodeURIComponent(evalName)}`, {
       method: "DELETE",
+    }),
+  dryRun: (
+    projectId: string,
+    body: { prompt_template: string; judge_models: string[]; test_input: string; test_output: string }
+  ) =>
+    apiFetch<EvalDryRunResult>(`/api/v1/projects/${projectId}/evals/config/dry-run`, {
+      projectId,
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 };
 
@@ -488,5 +497,51 @@ export const storageApi = {
   getPurgeJob: (projectId: string, jobId: string, apiKey: string): Promise<PurgeJob> =>
     apiFetch(`/api/v1/projects/${projectId}/storage/purge-jobs/${jobId}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
+    }),
+};
+
+// ── Ingest Tokens ─────────────────────────────────────────────────────────────
+
+export const ingestTokensApi = {
+  list: (projectId: string, apiKey: string, adminKey: string): Promise<IngestToken[]> =>
+    apiFetch(`/api/v1/projects/${projectId}/ingest-tokens`, {
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+    }),
+
+  create: (
+    projectId: string,
+    label: string,
+    apiKey: string,
+    adminKey: string
+  ): Promise<CreateIngestTokenResponse> =>
+    apiFetch(`/api/v1/projects/${projectId}/ingest-tokens`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+      body: JSON.stringify({ label }),
+    }),
+
+  delete: (
+    projectId: string,
+    tokenId: string,
+    apiKey: string,
+    adminKey: string
+  ): Promise<void> =>
+    apiFetch(`/api/v1/projects/${projectId}/ingest-tokens/${tokenId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+    }),
+};
+
+// ── Loop Detection Config ─────────────────────────────────────────────────────
+
+export const loopConfigApi = {
+  get: (projectId: string): Promise<LoopConfig> =>
+    apiFetch<LoopConfig>(`/api/v1/projects/${projectId}/loop-config`, { projectId }),
+
+  put: (projectId: string, cfg: LoopConfig, apiKey: string, adminKey: string): Promise<LoopConfig> =>
+    apiFetch<LoopConfig>(`/api/v1/projects/${projectId}/loop-config`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${apiKey}`, "X-Admin-Key": adminKey },
+      body: JSON.stringify(cfg),
     }),
 };

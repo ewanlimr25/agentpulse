@@ -10,18 +10,18 @@ import (
 )
 
 // QueryRepeatedToolCalls detects agent loops via two-tier ClickHouse analysis.
-// Tier 1 (high confidence): same span_name + input + output, count >= 2
-// Tier 2 (low confidence): same span_name + input only, count >= 4, avg interval < 3s
+// Tier 1 (high confidence): same span_name + input + output, count >= cfg.Tier1MinCount
+// Tier 2 (low confidence): same span_name + input only, count >= cfg.Tier2MinCount, avg interval < cfg.Tier2MaxIntervalMs
 // Only spans with non-empty input attributes are considered.
 // Results are deduplicated: if a (run_id, span_name, input_hash) matches both tiers,
 // only the Tier 1 (high confidence) result is returned.
-func QueryRepeatedToolCalls(ctx context.Context, conn driver.Conn, projectID string, since time.Time) ([]domain.RepeatedToolCall, error) {
+func QueryRepeatedToolCalls(ctx context.Context, conn driver.Conn, projectID string, since time.Time, cfg domain.LoopConfig) ([]domain.RepeatedToolCall, error) {
 	// Run both tier queries
-	tier1, err := queryTier1(ctx, conn, projectID, since)
+	tier1, err := queryTier1(ctx, conn, projectID, since, cfg.Tier1MinCount)
 	if err != nil {
 		return nil, err
 	}
-	tier2, err := queryTier2(ctx, conn, projectID, since)
+	tier2, err := queryTier2(ctx, conn, projectID, since, cfg.Tier2MinCount, cfg.Tier2MaxIntervalMs)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func QueryRepeatedToolCalls(ctx context.Context, conn driver.Conn, projectID str
 	return results, nil
 }
 
-const tier1Query = `
+const tier1QueryTemplate = `
 SELECT
     run_id,
     span_name,
@@ -66,12 +66,12 @@ WHERE project_id = ?
   AND payload_s3_key = ''
   AND (attributes['gen_ai.prompt'] != '' OR attributes['tool.input'] != '')
 GROUP BY run_id, span_name, input_hash, output_hash
-HAVING cnt >= 2
+HAVING cnt >= %d
 ORDER BY cnt DESC
 LIMIT 1000
 `
 
-const tier2Query = `
+const tier2QueryTemplate = `
 SELECT
     run_id,
     span_name,
@@ -91,13 +91,14 @@ WHERE project_id = ?
   AND payload_s3_key = ''
   AND (attributes['gen_ai.prompt'] != '' OR attributes['tool.input'] != '')
 GROUP BY run_id, span_name, input_hash
-HAVING cnt >= 4 AND avg_interval_ms < 3000
+HAVING cnt >= %d AND avg_interval_ms < %d
 ORDER BY cnt DESC
 LIMIT 1000
 `
 
-func queryTier1(ctx context.Context, conn driver.Conn, projectID string, since time.Time) ([]domain.RepeatedToolCall, error) {
-	rows, err := conn.Query(ctx, tier1Query, projectID, since)
+func queryTier1(ctx context.Context, conn driver.Conn, projectID string, since time.Time, minCount int) ([]domain.RepeatedToolCall, error) {
+	q := fmt.Sprintf(tier1QueryTemplate, minCount)
+	rows, err := conn.Query(ctx, q, projectID, since)
 	if err != nil {
 		return nil, fmt.Errorf("loopdetect tier1 query: %w", err)
 	}
@@ -117,8 +118,9 @@ func queryTier1(ctx context.Context, conn driver.Conn, projectID string, since t
 	return results, rows.Err()
 }
 
-func queryTier2(ctx context.Context, conn driver.Conn, projectID string, since time.Time) ([]domain.RepeatedToolCall, error) {
-	rows, err := conn.Query(ctx, tier2Query, projectID, since)
+func queryTier2(ctx context.Context, conn driver.Conn, projectID string, since time.Time, minCount, maxIntervalMs int) ([]domain.RepeatedToolCall, error) {
+	q := fmt.Sprintf(tier2QueryTemplate, minCount, maxIntervalMs)
+	rows, err := conn.Query(ctx, q, projectID, since)
 	if err != nil {
 		return nil, fmt.Errorf("loopdetect tier2 query: %w", err)
 	}

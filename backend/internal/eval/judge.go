@@ -46,10 +46,17 @@ func stripMarkdownFences(s string) string {
 	return s
 }
 
-type judgeResponse struct {
+// JudgeResponse holds the score and reasoning returned by a judge model.
+// It is exported so that callers outside this package (e.g. the dry-run handler)
+// can read the result fields without reflection.
+type JudgeResponse struct {
 	Score     float32 `json:"score"`
 	Reasoning string  `json:"reasoning"`
 }
+
+// judgeResponse is a package-internal alias kept for backward compatibility
+// with existing unexported usages throughout this file.
+type judgeResponse = JudgeResponse
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
 
@@ -309,9 +316,15 @@ func callGoogleURL(ctx context.Context, _ string, _ string, prompt, fullURL stri
 
 // ── Router ────────────────────────────────────────────────────────────────────
 
-// callJudgeModel routes to the correct provider based on the model ID.
-// Returns an error if the model is not in SupportedModels or the required API key is empty.
+// callJudgeModel is the package-internal entry point used by Worker and callJudge.
 func callJudgeModel(ctx context.Context, keys ProviderKeys, model, prompt string) (*judgeResponse, error) {
+	return CallJudgeModel(ctx, keys, model, prompt)
+}
+
+// CallJudgeModel routes to the correct provider based on the model ID.
+// Returns an error if the model is not in SupportedModels or the required API key is empty.
+// It is exported so that handlers (e.g. eval config dry-run) can invoke judges directly.
+func CallJudgeModel(ctx context.Context, keys ProviderKeys, model, prompt string) (*judgeResponse, error) {
 	provider, ok := SupportedModels[model]
 	if !ok {
 		return nil, fmt.Errorf("judge: unsupported model %q", model)

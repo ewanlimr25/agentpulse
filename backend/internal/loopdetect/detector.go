@@ -77,7 +77,14 @@ func (d *Detector) detectAll(ctx context.Context) {
 func (d *Detector) detectProject(ctx context.Context, p *domain.Project) error {
 	since := d.getWatermark(p.ID)
 
-	results, err := QueryRepeatedToolCalls(ctx, d.ch, p.ID, since)
+	cfg, err := d.projectStore.GetLoopConfig(ctx, p.ID)
+	if err != nil {
+		slog.Warn("loopdetect get loop config, using defaults", "project_id", p.ID, "error", err)
+		def := domain.DefaultLoopConfig
+		cfg = &def
+	}
+
+	results, err := QueryRepeatedToolCalls(ctx, d.ch, p.ID, since, *cfg)
 	if err != nil {
 		return fmt.Errorf("query repeated calls: %w", err)
 	}

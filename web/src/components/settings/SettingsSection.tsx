@@ -6,6 +6,8 @@ import { settingsApi } from "@/lib/api";
 import { getApiKey } from "@/lib/api-keys";
 import { useToast } from "@/components/toast/ToastContext";
 import { StorageSection } from "@/components/settings/StorageSection";
+import { IngestTokensSection } from "@/components/settings/IngestTokensSection";
+import { LoopDetectionSection } from "@/components/settings/LoopDetectionSection";
 import type { PIICustomRule } from "@/lib/types";
 
 interface Props {
@@ -124,11 +126,13 @@ function AddRuleForm({ onAdd, onCancel, isPending }: AddRuleFormProps) {
   );
 }
 
-type SettingsTab = "security" | "storage";
+type SettingsTab = "security" | "storage" | "tokens" | "loops";
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   security: "Security",
   storage: "Storage",
+  tokens: "Tokens",
+  loops: "Loop Detection",
 };
 
 function SecurityContent({ projectId }: Props) {
@@ -363,7 +367,7 @@ export function SettingsSection({ projectId }: Props) {
 
   const apiKey = getApiKey(projectId) ?? "";
 
-  const TABS: SettingsTab[] = ["security", "storage"];
+  const TABS: SettingsTab[] = ["security", "storage", "tokens", "loops"];
 
   return (
     <div className="flex flex-col gap-6">
@@ -393,6 +397,8 @@ export function SettingsSection({ projectId }: Props) {
           adminKey={adminKey}
         />
       )}
+      {activeTab === "tokens" && <IngestTokensSection projectId={projectId} />}
+      {activeTab === "loops" && <LoopDetectionSection projectId={projectId} />}
     </div>
   );
 }

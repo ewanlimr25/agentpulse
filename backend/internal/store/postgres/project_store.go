@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/agentpulse/agentpulse/backend/internal/domain"
@@ -86,4 +89,44 @@ func (s *ProjectStore) GetByAdminKeyHash(ctx context.Context, hash string) (*dom
 		return nil, fmt.Errorf("project_store get_by_admin_key_hash: %w", err)
 	}
 	return p, nil
+}
+
+// GetLoopConfig returns the loop-detection config stored in the loop_config JSONB column.
+// If the column is NULL (no custom config set), DefaultLoopConfig is returned.
+func (s *ProjectStore) GetLoopConfig(ctx context.Context, projectID string) (*domain.LoopConfig, error) {
+	var raw []byte
+	err := s.pool.QueryRow(ctx, `
+		SELECT loop_config FROM projects WHERE id = $1
+	`, projectID).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			def := domain.DefaultLoopConfig
+			return &def, nil
+		}
+		return nil, fmt.Errorf("project_store get_loop_config %s: %w", projectID, err)
+	}
+	if len(raw) == 0 || string(raw) == "null" {
+		def := domain.DefaultLoopConfig
+		return &def, nil
+	}
+	var cfg domain.LoopConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return nil, fmt.Errorf("project_store get_loop_config unmarshal %s: %w", projectID, err)
+	}
+	return &cfg, nil
+}
+
+// PutLoopConfig serializes cfg to JSONB and saves it in the projects table.
+func (s *ProjectStore) PutLoopConfig(ctx context.Context, projectID string, cfg domain.LoopConfig) error {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("project_store put_loop_config marshal: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		UPDATE projects SET loop_config = $1 WHERE id = $2
+	`, raw, projectID)
+	if err != nil {
+		return fmt.Errorf("project_store put_loop_config %s: %w", projectID, err)
+	}
+	return nil
 }

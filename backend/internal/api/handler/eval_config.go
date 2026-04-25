@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -43,6 +44,8 @@ func NewEvalConfigHandlerWithKeys(configs store.EvalConfigStore, keys eval.Provi
 
 func (h *EvalConfigHandler) Routes(r chi.Router) {
 	r.Get("/config", h.list)
+	// dry-run must be registered before the parameterised /:evalName route.
+	r.Post("/config/dry-run", h.DryRun)
 	r.Post("/config", h.upsert)
 	r.Delete("/config/{evalName}", h.delete)
 }
@@ -178,4 +181,79 @@ func (h *EvalConfigHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.JSON(w, http.StatusOK, map[string]string{"deleted": evalName})
+}
+
+// ── Dry-run ───────────────────────────────────────────────────────────────────
+
+type dryRunRequest struct {
+	PromptTemplate string   `json:"prompt_template"`
+	JudgeModels    []string `json:"judge_models"`
+	TestInput      string   `json:"test_input"`
+	TestOutput     string   `json:"test_output"`
+}
+
+type dryRunScore struct {
+	ModelID   string  `json:"model_id"`
+	Score     float32 `json:"score"`
+	Rationale string  `json:"rationale"`
+}
+
+type dryRunResponse struct {
+	Scores []dryRunScore `json:"scores"`
+}
+
+// DryRun handles POST /api/v1/projects/:projectID/evals/config/dry-run.
+// It renders the prompt template with the provided test inputs and calls each
+// selected judge model, returning the score and rationale per model.
+// Only standard project Bearer auth is required.
+func (h *EvalConfigHandler) DryRun(w http.ResponseWriter, r *http.Request) {
+	var req dryRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// Validate prompt_template.
+	if req.PromptTemplate == "" {
+		httputil.Error(w, http.StatusBadRequest, "prompt_template is required")
+		return
+	}
+	if !strings.Contains(req.PromptTemplate, "{{input}}") && !strings.Contains(req.PromptTemplate, "{{output}}") {
+		httputil.Error(w, http.StatusBadRequest, "prompt_template must contain {{input}} or {{output}}")
+		return
+	}
+
+	// Validate judge_models.
+	if len(req.JudgeModels) == 0 {
+		httputil.Error(w, http.StatusBadRequest, "judge_models must not be empty")
+		return
+	}
+	if msg := h.validateJudgeModels(req.JudgeModels); msg != "" {
+		httputil.Error(w, http.StatusUnprocessableEntity, msg)
+		return
+	}
+
+	// Render the template.
+	rendered := strings.ReplaceAll(req.PromptTemplate, "{{input}}", req.TestInput)
+	rendered = strings.ReplaceAll(rendered, "{{output}}", req.TestOutput)
+
+	// Cap with a 30-second timeout.
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	scores := make([]dryRunScore, 0, len(req.JudgeModels))
+	for _, modelID := range req.JudgeModels {
+		jr, err := eval.CallJudgeModel(ctx, h.providerKeys, modelID, rendered)
+		if err != nil {
+			httputil.Error(w, http.StatusBadGateway, fmt.Sprintf("judge call failed for model %q: %s", modelID, err.Error()))
+			return
+		}
+		scores = append(scores, dryRunScore{
+			ModelID:   modelID,
+			Score:     jr.Score,
+			Rationale: jr.Reasoning,
+		})
+	}
+
+	httputil.JSON(w, http.StatusOK, dryRunResponse{Scores: scores})
 }

@@ -91,6 +91,7 @@ func NewRouter(
 	userHandler := handler.NewUserHandler(users)
 	searchHandler := handler.NewSearchHandler(search)
 	settingsHandler := handler.NewSettingsHandler(piiConfigs, pgPool)
+	loopConfigHandler := handler.NewLoopConfigHandler(projects)
 	feedbackWriteLimiter := middleware.NewRateLimiter(10, time.Minute)
 	playgroundRunLimiter := middleware.NewRateLimiter(20, time.Minute)
 	spanFeedbackHandler := handler.NewSpanFeedbackHandler(spanFeedback)
@@ -196,6 +197,9 @@ func NewRouter(
 			r.Delete("/spans/{spanID}/feedback", spanFeedbackHandler.Delete)
 			r.Get("/runs/{runID}/feedback", spanFeedbackHandler.ListByRun)
 
+			// Loop detection config (read) — authenticated via BearerAuth inherited from parent route group.
+			r.Get("/loop-config", loopConfigHandler.Get)
+
 			// Settings (read) — authenticated via BearerAuth inherited from parent route group.
 			r.Get("/settings", settingsHandler.GetSettings)
 			r.Get("/health", healthHandler.Status)
@@ -229,6 +233,12 @@ func NewRouter(
 		r.Route("/projects/{projectID}/settings", func(r chi.Router) {
 			r.Use(adminKeyAuth)
 			r.Put("/", settingsHandler.PutSettings)
+		})
+
+		// Loop detection config (write) — require AdminKeyAuth.
+		r.Route("/projects/{projectID}/loop-config", func(r chi.Router) {
+			r.Use(adminKeyAuth)
+			r.Put("/", loopConfigHandler.Put)
 		})
 
 		// Storage mutations — require AdminKeyAuth.

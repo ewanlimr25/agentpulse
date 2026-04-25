@@ -11,6 +11,7 @@ import type {
 } from "@/lib/types";
 import { PlaygroundEditor } from "@/components/playground/PlaygroundEditor";
 import { PlaygroundResult } from "@/components/playground/PlaygroundResult";
+import { ABStatsDisplay } from "@/components/playground/ABStatsDisplay";
 
 export default function PlaygroundSessionPage({
   params,
@@ -224,6 +225,11 @@ export default function PlaygroundSessionPage({
           );
         })}
       </div>
+
+      {/* A/B statistical significance — only shown for two-variant sessions */}
+      {variants.length === 2 && (
+        <ABStatsDisplay variantA={variants[0]} variantB={variants[1]} />
+      )}
     </div>
   );
 }

@@ -633,3 +633,29 @@ export interface PurgeJob {
 export interface DryRunResult {
   spans_to_delete: number;
 }
+
+// ── Ingest Tokens ─────────────────────────────────────────────────────────────
+
+export interface IngestToken {
+  id: string;
+  label: string;
+  created_at: string;
+}
+
+export interface CreateIngestTokenResponse extends IngestToken {
+  token: string;
+}
+
+// ── Eval Dry-Run ──────────────────────────────────────────────────────────────
+
+export interface EvalDryRunResult {
+  scores: Array<{ model_id: string; score: number; rationale: string }>;
+}
+
+// ── Loop Detection Config ─────────────────────────────────────────────────────
+
+export interface LoopConfig {
+  tier1_min_count: number;
+  tier2_min_count: number;
+  tier2_max_interval_ms: number;
+}

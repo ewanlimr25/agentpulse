@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { evalsApi } from "@/lib/api";
+import type { EvalDryRunResult } from "@/lib/types";
 
 const AVAILABLE_JUDGE_MODELS = [
   { id: "claude-haiku-4-5", label: "claude-haiku-4-5" },
@@ -23,6 +24,14 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
   const [agentFilter, setAgentFilter] = useState(""); // comma-separated agent names
   const [judgeModels, setJudgeModels] = useState<string[]>(["claude-haiku-4-5"]);
   const [error, setError] = useState("");
+
+  // ── Test Template state ──────────────────────────────────────────────────
+  const [showTest, setShowTest] = useState(false);
+  const [testInput, setTestInput] = useState("");
+  const [testOutput, setTestOutput] = useState("");
+  const [testResult, setTestResult] = useState<EvalDryRunResult | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState("");
 
   function toggleJudgeModel(modelId: string) {
     setJudgeModels((prev) => {
@@ -67,6 +76,29 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
       return;
     }
     mutation.mutate();
+  }
+
+  async function handleRunTest() {
+    setTestError("");
+    setTestResult(null);
+    if (!promptTemplate.includes("{{input}}") && !promptTemplate.includes("{{output}}")) {
+      setTestError("Prompt template must contain {{input}} or {{output}} before testing.");
+      return;
+    }
+    setTestLoading(true);
+    try {
+      const result = await evalsApi.dryRun(projectId, {
+        prompt_template: promptTemplate,
+        judge_models: judgeModels,
+        test_input: testInput,
+        test_output: testOutput,
+      });
+      setTestResult(result);
+    } catch (err: unknown) {
+      setTestError(err instanceof Error ? err.message : "An unexpected error occurred.");
+    } finally {
+      setTestLoading(false);
+    }
   }
 
   return (
@@ -152,6 +184,79 @@ export function AddEvalConfigModal({ projectId, onClose }: Props) {
             <p className="text-xs text-[var(--text-muted)] mt-1">
               Variables: <code className="font-mono">{"{{input}}"}</code>, <code className="font-mono">{"{{output}}"}</code>, <code className="font-mono">{"{{context}}"}</code>, <code className="font-mono">{"{{tool_name}}"}</code>
             </p>
+          </div>
+
+          {/* ── Test Template ─────────────────────────────────────────────── */}
+          <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowTest((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text)] bg-[var(--surface-2)] transition-colors"
+            >
+              <span>{showTest ? "▾" : "▸"} Test this template</span>
+            </button>
+
+            {showTest && (
+              <div className="px-3 py-3 flex flex-col gap-3 bg-[var(--surface)]">
+                <div>
+                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Test input</label>
+                  <textarea
+                    value={testInput}
+                    onChange={(e) => setTestInput(e.target.value)}
+                    rows={4}
+                    placeholder="e.g. user asked about refund policy"
+                    style={{ height: "150px" }}
+                    className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Test output</label>
+                  <textarea
+                    value={testOutput}
+                    onChange={(e) => setTestOutput(e.target.value)}
+                    rows={4}
+                    placeholder="e.g. assistant explained the 30-day return window"
+                    style={{ height: "150px" }}
+                    className="w-full bg-[var(--surface-2)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleRunTest}
+                  disabled={testLoading}
+                  className="self-start px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {testLoading ? "Running judge…" : "Run Test"}
+                </button>
+
+                {testError && (
+                  <p className="text-xs text-red-400">{testError}</p>
+                )}
+
+                {testResult && (
+                  <div className="flex flex-col gap-2">
+                    {testResult.scores.map((s) => (
+                      <div key={s.model_id} className="rounded-lg bg-[var(--surface-2)] border border-[var(--border)] p-3 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono text-[var(--text)]">{s.model_id}</span>
+                          <span className="text-xs font-semibold text-indigo-400">{s.score.toFixed(2)}</span>
+                        </div>
+                        <div className="w-full bg-[var(--border)] rounded-full h-1.5">
+                          <div
+                            className="bg-indigo-500 h-1.5 rounded-full"
+                            style={{ width: `${Math.round(s.score * 100)}%` }}
+                          />
+                        </div>
+                        {s.rationale && (
+                          <p className="text-xs text-[var(--text-muted)] leading-relaxed">{s.rationale}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-xs text-red-400">{error}</p>}

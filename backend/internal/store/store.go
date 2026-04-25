@@ -95,6 +95,11 @@ type ProjectStore interface {
 	// GetByAdminKeyHash looks up a project by the SHA-256 hex hash of its admin key.
 	// Returns an error wrapping pgx.ErrNoRows if not found.
 	GetByAdminKeyHash(ctx context.Context, hash string) (*domain.Project, error)
+	// GetLoopConfig returns the loop-detection config for a project.
+	// Returns &DefaultLoopConfig if the project has no custom config (loop_config IS NULL).
+	GetLoopConfig(ctx context.Context, projectID string) (*domain.LoopConfig, error)
+	// PutLoopConfig saves the loop-detection config for a project.
+	PutLoopConfig(ctx context.Context, projectID string, cfg domain.LoopConfig) error
 }
 
 // BudgetStore manages budget rules and alerts in Postgres.

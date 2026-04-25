@@ -49,13 +49,13 @@ Backend and SDKs have decent unit tests. CI only runs the TypeScript SDK.
 
 Backend works, frontend doesn't. Each is a small React page talking to existing endpoints.
 
-- [ ] **Ingest-token management page** (generate / list / revoke) _(model: haiku · effort: low — CRUD page, endpoints already exist)_
-- [ ] **Retention-policy settings page** (`PUT /api/v1/projects/:projectId/storage/retention`) _(model: haiku · effort: low — single PUT form, endpoint exists)_
-- [ ] **PII-redaction config page** (regex patterns per project) _(model: sonnet · effort: medium — regex editor + per-project config needs validation UX)_
-- [ ] **Email-digest settings page** (frequency + recipients + on/off) _(model: haiku · effort: low — form + toggle, endpoint exists)_
-- [ ] **Eval custom-judge editor** (prompt template authoring, dry-run against sample spans) _(model: sonnet · effort: high — prompt template authoring + dry-run against live spans, complex UX)_
-- [ ] **Loop-detection tuning** (threshold + window per project, currently hardcoded) _(model: haiku · effort: medium — threshold/window form per project, currently hardcoded so needs backend wiring too)_
-- [ ] **Playground A/B statistical significance** display (sample size + p-value + winner indicator) _(model: opus · effort: high — p-value display is trivial; choosing the right test, handling small N and unequal groups, and surfacing it correctly requires statistical reasoning)_
+- [x] **Ingest-token management page** (generate / list / revoke) — Settings > Tokens tab; one-time token modal with copy-to-clipboard _(model: haiku · effort: low — CRUD page, endpoints already exist)_
+- [x] **Retention-policy settings page** (`PUT /api/v1/projects/:projectId/storage/retention`) — already shipped in Settings > Storage > RetentionCard _(model: haiku · effort: low — single PUT form, endpoint exists)_
+- [x] **PII-redaction config page** (regex patterns per project) — already shipped in Settings > Security > PII Redaction _(model: sonnet · effort: medium — regex editor + per-project config needs validation UX)_
+- [x] **Email-digest settings page** (frequency + recipients + on/off) — already shipped in Alerts > Notification Preferences _(model: haiku · effort: low — form + toggle, endpoint exists)_
+- [x] **Eval custom-judge editor** (prompt template authoring, dry-run against sample spans) — dry-run added to AddEvalConfigModal; backend endpoint `POST /evals/config/dry-run` _(model: sonnet · effort: high — prompt template authoring + dry-run against live spans, complex UX)_
+- [x] **Loop-detection tuning** (threshold + window per project, currently hardcoded) — migration 016, backend GET/PUT `/loop-config`, Settings > Loop Detection tab _(model: haiku · effort: medium — threshold/window form per project, currently hardcoded so needs backend wiring too)_
+- [x] **Playground A/B statistical significance** display (sample size + p-value + winner indicator) — ABStatsDisplay component with Welch's t-test, renders below variant grid _(model: opus · effort: high — p-value display is trivial; choosing the right test, handling small N and unequal groups, and surfacing it correctly requires statistical reasoning)_
 
 ## Tier 5 — documentation
 
