@@ -6,9 +6,20 @@ import (
 	"strings"
 )
 
+// Mode selects between team mode (Postgres + ClickHouse + S3 + external collector)
+// and indie mode (single-binary, embedded SQLite + DuckDB + local-FS payloads + embedded OTLP).
+type Mode string
+
+const (
+	ModeTeam  Mode = "team"
+	ModeIndie Mode = "indie"
+)
+
 // Config holds all runtime configuration for the backend API.
 // Values are read from environment variables.
 type Config struct {
+	Mode            Mode
+	Indie           IndieConfig
 	HTTP            HTTPConfig
 	Postgres        PostgresConfig
 	ClickHouse      ClickHouseConfig
@@ -19,6 +30,16 @@ type Config struct {
 	CORS            CORSConfig
 	WebPush         WebPushConfig
 	Email           EmailConfig
+}
+
+// IndieConfig holds settings specific to indie mode (single-binary).
+type IndieConfig struct {
+	// DataDir is the directory holding agentpulse.db (SQLite), spans.duckdb (DuckDB),
+	// payloads/ (offloaded payloads), and api_key (admin bearer printed once on first run).
+	// Defaults to ~/.agentpulse.
+	DataDir string
+	// OTLPAddr is the listen address for the embedded OTLP/HTTP receiver. Defaults to :4318.
+	OTLPAddr string
 }
 
 // WebPushConfig holds VAPID credentials for browser push notifications.
@@ -93,7 +114,17 @@ type S3Config struct {
 // Load reads configuration from environment variables.
 // Returns an error if any required variable is missing.
 func Load() (*Config, error) {
+	mode := Mode(strings.ToLower(getEnv("AGENTPULSE_MODE", string(ModeTeam))))
+	if mode != ModeTeam && mode != ModeIndie {
+		return nil, fmt.Errorf("AGENTPULSE_MODE must be 'team' or 'indie', got %q", mode)
+	}
+
 	cfg := &Config{
+		Mode: mode,
+		Indie: IndieConfig{
+			DataDir:  getEnv("AGENTPULSE_DATA_DIR", ""),
+			OTLPAddr: getEnv("AGENTPULSE_OTLP_ADDR", ":4318"),
+		},
 		HTTP: HTTPConfig{
 			Host:    getEnv("HTTP_HOST", "0.0.0.0"),
 			Port:    getEnv("HTTP_PORT", "8080"),

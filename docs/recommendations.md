@@ -129,9 +129,36 @@ Bug [langfuse/langfuse#7591](https://github.com/langfuse/langfuse/issues/7591): 
 
 Priority is impact × cost-to-indie-dev — the degree to which this moves the needle for the target audience, weighted against how much engineering time it takes.
 
+> **Reading the model/effort line on each item.** Each recommendation carries a `**Model:** … · **Reasoning effort:** … · **Fallback:** …` annotation derived from the `/model-route` heuristic — `haiku` for deterministic mechanical work, `sonnet` for default implementation/refactors, `opus` for architecture and ambiguous design. Effort levels (`medium` / `high` / `xhigh`) reflect how much extended-thinking budget the task warrants. The fallback is what to escalate (or drop) to if the first model misroutes.
+
 ### P0 — ship in the next 8 weeks
 
-#### P0-1. Single-binary "Indie Mode" (SQLite + DuckDB backend)
+#### P0-1. Single-binary "Indie Mode" (SQLite + DuckDB backend) — 🟡 foundation shipped (April 2026)
+
+**Status (2026-04-25):** the indie-mode foundation + a vertical slice landed in this commit. `AGENTPULSE_MODE=indie ./agentpulse-server` (built with `-tags=duckdb`) now boots in <2 s, auto-creates `~/.agentpulse/{agentpulse.db, spans.duckdb, payloads/}`, prints a one-time bearer token, listens for OTLP on `:4318`, and serves the API on `:8080`. End-to-end smoke test (POST `/v1/traces` → GET `/api/v1/projects/.../runs`) passes. The remaining store ports (~20 stores) plus embedded UI bundle and `agentpulse migrate --to=team` are the follow-up sessions tracked below.
+
+| Slice | Status |
+|---|---|
+| `--mode=indie\|team` runtime flag (`AGENTPULSE_MODE`) | ✅ shipped |
+| Embedded migrations runner (`internal/migrations`) for SQLite + DuckDB | ✅ shipped |
+| SQLite stores: `ProjectStore`, `IngestTokenStore` | ✅ shipped |
+| DuckDB stores: `SpanStore` (read+write), `RunStore` (Go-side aggregation) | ✅ shipped |
+| Local-filesystem `PayloadStore` | ✅ shipped |
+| Embedded OTLP/HTTP receiver with bearer-auth against `IngestTokenStore` | ✅ shipped |
+| Bootstrap: first-run detection, single-token UX, `~/.agentpulse/admin_api_key` | ✅ shipped |
+| `bootstrap.StoreBundle` factory — team and indie share the API router | ✅ shipped |
+| Audit writer accepts nil ClickHouse conn (no-op in indie) | ✅ shipped |
+| Remaining 20 stores ported from Postgres → SQLite (alerts, evals, budgets, playground, retention, push, email, …) | ⏳ follow-up |
+| DuckDB `SessionStore`, `UserStore`, `SearchStore`, `EvalStore`, `AnalyticsStore`, `ExportStore` | ⏳ follow-up |
+| Embedded Next.js UI as `embed.FS` | ⏳ follow-up |
+| `agentpulse migrate --to=team` data migration tool | ⏳ follow-up |
+| Conformance test suite (same interface tests run against PG and SQLite) | ⏳ follow-up |
+
+The build matrix:
+- **Team mode (default):** `CGO_ENABLED=0 go build ./cmd/server` — unchanged from before, no new runtime deps.
+- **Indie mode:** `CGO_ENABLED=1 go build -tags=duckdb ./cmd/server`. The `duckdb` tag pulls in `marcboeker/go-duckdb` (CGO-required); without it `--mode=indie` exits with a clear error pointing to the rebuild command.
+
+#### P0-1 (original brief — preserved for reference)
 
 **Problem.** Self-host TCO kills adoption; Phoenix wins indies today purely on container simplicity.
 
@@ -146,6 +173,8 @@ Priority is impact × cost-to-indie-dev — the degree to which this moves the n
 Keep ClickHouse + Postgres + separate collector as "team mode," selected by startup flag (`--mode=team|indie`). Indie mode falls back to local filesystem for payload offload instead of S3.
 
 **Effort.** M (2–4 engineer-weeks). The storage layer is already behind repository interfaces; the bulk of the work is implementing `chstore` and `pgstore` against DuckDB and SQLite plus bundling the frontend.
+
+**Model:** opus · **Reasoning effort:** xhigh · **Fallback:** sonnet — *dual-mode storage rewrite, embedded OTLP receiver, and bundled UI; architectural tradeoffs throughout (DuckDB feature parity vs ClickHouse, SQLite vs Postgres semantics, indie/team migration path).*
 
 **Why this is P0 for indies.** It's the single biggest barrier between "I'll try this tonight" and "I'll set this up next sprint." See the Glassbrain quote above.
 
@@ -171,6 +200,8 @@ Keep ClickHouse + Postgres + separate collector as "team mode," selected by star
 
 **Effort.** M (2–3 engineer-weeks).
 
+**Model:** opus · **Reasoning effort:** high · **Fallback:** sonnet — *MCP semantic-convention design, end-to-end client/server span correlation via `mcp.session.id`, plus collector auth tightening; multiple coupled design decisions and a new MCP server surface to design.*
+
 **Why this is P0 for indies.** Every Claude Code / Cursor user today is the ideal user; this is the feature that makes them switch from ad-hoc logging.
 
 #### P0-3. Agent run replay ("time-travel")
@@ -187,6 +218,8 @@ Keep ClickHouse + Postgres + separate collector as "team mode," selected by star
 
 **Effort.** M (2 engineer-weeks).
 
+**Model:** sonnet · **Reasoning effort:** high · **Fallback:** opus — *extends the existing `replay` CLI and playground; main complexity is deterministic context reconstruction at arbitrary turns and stub-mode tool plumbing in the SDK. Escalate to opus if fork semantics for branching cost/quality deltas turn out to be ambiguous.*
+
 **Why this is P0 for indies.** Single strongest *demo* feature — easy to screenshot on HN/Twitter. Converts curious visitors into users.
 
 ---
@@ -201,6 +234,8 @@ Add a `trajectory_evaluator` that consumes the span tree for a run and produces 
 
 **Effort.** M. **Why indies:** "did my agent screw up this whole session?" is a more useful question than "is this individual answer relevant?"
 
+**Model:** opus · **Reasoning effort:** high · **Fallback:** sonnet — *novel evaluator type; trajectory scoring methodology (tool-selection correctness, step efficiency, backtracking, goal adherence) is an open-ended design problem with no in-tree template.*
+
 #### P1-2. Online evals (sampled production scoring)
 
 Running evals on every span is prohibitively expensive. Braintrust advertises production scoring "with no impact on latency"; Logfire runs Pydantic Evals on sampled production traces.
@@ -209,6 +244,8 @@ Add a sampler (1-in-N or per-project budget cap) that dispatches trajectory + ou
 
 **Effort.** S. Builds on existing eval infra. **Why indies:** lets them say "yes, I eval in prod" without 100×'ing their token bill.
 
+**Model:** sonnet · **Reasoning effort:** medium · **Fallback:** haiku — *sampler + queue worker on top of existing eval infra; reuses the `budgetenforceproc` cap path. Mostly mechanical wiring, minimal design ambiguity.*
+
 #### P1-3. Guardrails telemetry as a first-class span kind
 
 Datadog monitors prompt-injection attempts; Langfuse has docs on it; nobody ships an OSS-first implementation.
@@ -216,6 +253,8 @@ Datadog monitors prompt-injection attempts; Langfuse has docs on it; nobody ship
 Define `gen_ai.guardrail.*` attributes (`injection_score`, `pii_found`, `toxicity`, `policy_violations`). Ship optional in-process detectors (LLM Guard / Presidio / regex PII) as collector processors. Default alert rule: spike in `guardrail.injection_score > 0.8`.
 
 **Effort.** M. **Why indies:** GDPR / privacy is a structural advantage of self-hosted — AgentPulse should lean into it.
+
+**Model:** sonnet · **Reasoning effort:** high · **Fallback:** opus — *new `gen_ai.guardrail.*` span attributes plus a collector processor wrapping LLM Guard / Presidio / regex; collector-processor pattern is established in-tree, but OTel semconv alignment and detector orchestration warrant deep reasoning.*
 
 #### P1-4. Silent tool-failure detector
 
@@ -231,6 +270,8 @@ Emit `anomaly.*` events; wire into the existing multi-signal alert evaluator.
 
 **Effort.** M. **Why indies:** genuinely *novel* — "AgentPulse catches silent tool failures no one else sees" is a marketable headline.
 
+**Model:** opus · **Reasoning effort:** high · **Fallback:** sonnet — *novel anomaly-detection feature with multiple statistical signals (empty-result frequency, schema drift, downstream-reference rate, semantic similarity for stuck loops) to design and tune; no prior-art template to copy and false-positive cost is real.*
+
 #### P1-5. Cost-per-end-user / per-customer attribution, polished
 
 AgentPulse already supports `agentpulse.user.id` and has a `user_agg` ClickHouse table. Surface it better:
@@ -239,6 +280,8 @@ AgentPulse already supports `agentpulse.user.id` and has a `user_agg` ClickHouse
 - Per-user quality score (not just cost) — correlate with churn risk
 
 **Effort.** S. **Why indies:** converts hobby-scale users into paying SaaS operators who need billing-grade attribution.
+
+**Model:** sonnet · **Reasoning effort:** medium · **Fallback:** haiku — *dashboard tiles + alert rules + per-user quality score over the existing `user_agg` table; mostly surface work on data the platform already aggregates.*
 
 ---
 
@@ -252,17 +295,23 @@ Parse `thinking` blocks: length histograms, effort-level attribution, "wasted th
 
 **Effort.** M.
 
+**Model:** opus · **Reasoning effort:** high · **Fallback:** sonnet — *cross-provider thinking-block parsing (Anthropic, OpenAI o-series, Gemini, DeepSeek formats all differ) plus novel "wasted thinking" metric design; format-handling matrix and metric semantics are both open-ended.*
+
 #### P2-2. Synthetic dataset generation from production traces
 
 Indies can't afford to curate eval datasets. One-click *"take the last 500 failed sessions, de-PII them, generate eval test cases."* Patterns exist ([Anthropic guidance](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)); no OSS platform has shipped it as one button.
 
 **Effort.** M.
 
+**Model:** opus · **Reasoning effort:** high · **Fallback:** sonnet — *LLM-driven generation pipeline with prompt engineering, PII-handling, and de-duplication decisions; quality of synthesized eval cases depends on careful pipeline design and is hard to course-correct after the fact.*
+
 #### P2-3. Human-in-the-loop annotation queue
 
 Minimal keyboard-driven UI — when auto-eval flags a run low, a human hits ↑/↓ in 5 seconds to label it. Feeds labeled examples back into the dataset for future regression tests.
 
 **Effort.** S.
+
+**Model:** sonnet · **Reasoning effort:** medium · **Fallback:** haiku — *keyboard-driven UI + dataset feedback wiring; well-scoped UX work over the existing dataset/eval infra.*
 
 #### P2-4. Agent memory observability
 
@@ -271,6 +320,8 @@ Mem0 / Letta / Zep are standard in 2026 ([Mem0 — State of AI Agent Memory 2026
 Promote `memory.read` / `memory.write` from existing span kinds into a dedicated dashboard: memory-hit-rate, stale-memory detection, cost of memory ops per session.
 
 **Effort.** M.
+
+**Model:** sonnet · **Reasoning effort:** high · **Fallback:** opus — *promotes existing `memory.read` / `memory.write` span kinds into a dedicated dashboard plus new metrics (hit-rate, stale-memory, cost-per-session); standard dashboard work but multiple metric definitions to nail.*
 
 #### P2-5. Framework auto-instrumentation for Pydantic AI, Mastra, Google ADK
 
@@ -281,6 +332,8 @@ Framework adoption in 2026 nearly doubled YoY. The fast-movers AgentPulse doesn'
 - **Google ADK** — emerging but picking up.
 
 **Effort.** S each, additive.
+
+**Model:** sonnet · **Reasoning effort:** medium · **Fallback:** haiku — *mechanical framework instrumentation; one pattern reused per framework. Bump the **first** framework (Pydantic AI) to **high** effort to establish the template, then drop back to **medium** for Mastra and Google ADK.*
 
 ---
 

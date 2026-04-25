@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,6 +17,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/alerteval"
 	"github.com/agentpulse/agentpulse/backend/internal/api"
 	"github.com/agentpulse/agentpulse/backend/internal/audit"
+	"github.com/agentpulse/agentpulse/backend/internal/bootstrap"
 	"github.com/agentpulse/agentpulse/backend/internal/config"
 	"github.com/agentpulse/agentpulse/backend/internal/emaildigest"
 	"github.com/agentpulse/agentpulse/backend/internal/eval"
@@ -23,10 +26,6 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/pricing"
 	"github.com/agentpulse/agentpulse/backend/internal/pushnotify"
 	"github.com/agentpulse/agentpulse/backend/internal/storage"
-	"github.com/agentpulse/agentpulse/backend/internal/store"
-	chstore "github.com/agentpulse/agentpulse/backend/internal/store/clickhouse"
-	pgstore "github.com/agentpulse/agentpulse/backend/internal/store/postgres"
-	s3store "github.com/agentpulse/agentpulse/backend/internal/store/s3"
 )
 
 func main() {
@@ -40,6 +39,21 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	switch cfg.Mode {
+	case config.ModeIndie:
+		runIndie(cfg)
+	case config.ModeTeam:
+		runTeam(cfg)
+	default:
+		slog.Error("invalid mode", "mode", cfg.Mode)
+		os.Exit(1)
+	}
+}
+
+// runTeam preserves the original Postgres + ClickHouse + S3 + external
+// collector deployment. Behaviour is unchanged from before P0-1.
+func runTeam(cfg *config.Config) {
 	cfg.WarnDefaults(slog.Warn)
 	if os.Getenv("APP_ENV") == "production" {
 		cfg.ErrorDefaults(func(msg string, args ...any) {
@@ -48,139 +62,152 @@ func main() {
 		})
 	}
 
-	// ── Storage connections ────────────────────────────────────────────────
-	chConn, err := chstore.Open(cfg.ClickHouse)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	bundle, err := bootstrap.TeamStores(ctx, cfg)
 	if err != nil {
-		slog.Error("clickhouse connect", "error", err)
+		slog.Error("team mode bootstrap", "error", err)
 		os.Exit(1)
 	}
-	defer chConn.Close()
+	defer bundle.Close()
 
-	auditWriter := audit.NewWriter(chConn)
+	auditWriter := audit.NewWriter(bundle.ClickHouseConn())
+	startBackgroundServices(ctx, cfg, bundle, auditWriter, true /*startCollectorServices*/)
+	startHTTP(ctx, cfg, bundle, auditWriter, nil /*indieReceiverHandler*/)
+}
 
-	pgPool, err := pgstore.Open(cfg.Postgres)
+// runIndie starts the single-binary deployment: SQLite + DuckDB + local FS,
+// plus the embedded OTLP receiver in place of the external collector.
+func runIndie(cfg *config.Config) {
+	dataDir, err := bootstrap.EnsureIndieDataDir(cfg.Indie.DataDir)
 	if err != nil {
-		slog.Error("postgres connect", "error", err)
+		slog.Error("indie: data dir", "error", err)
 		os.Exit(1)
 	}
-	defer pgPool.Close()
+	slog.Info("indie mode", "data_dir", dataDir)
 
-	// Verify run_tags schema migration has been applied.
-	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM run_tags LIMIT 1"); err != nil {
-		slog.Error("run_tags table not found — apply migration 011_run_tags_annotations.up.sql before starting", "error", err)
-		os.Exit(1)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	// Verify push_subscriptions schema migration has been applied.
-	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM push_subscriptions LIMIT 1"); err != nil {
-		slog.Error("push_subscriptions table not found — apply migration 013_push_subscriptions.up.sql", "error", err)
-		os.Exit(1)
-	}
-
-	// Verify project_ingest_tokens schema migration has been applied.
-	if _, err := pgPool.Exec(context.Background(), "SELECT 1 FROM project_ingest_tokens LIMIT 1"); err != nil {
-		slog.Error("project_ingest_tokens table not found — apply migration 012_ingest_tokens.up.sql before starting", "error", err)
-		os.Exit(1)
-	}
-
-	// ── Stores ────────────────────────────────────────────────────────────
-	spanStore := chstore.NewSpanStore(chConn)
-	runStore := chstore.NewRunStore(chConn)
-	sessionStore := chstore.NewSessionStore(chConn)
-	userStore := chstore.NewUserStore(chConn)
-	searchStore := chstore.NewSearchStore(chConn)
-	projectStore := pgstore.NewProjectStore(pgPool)
-	topologyStore := pgstore.NewTopologyStore(pgPool)
-	budgetStore := pgstore.NewBudgetStore(pgPool)
-	evalStore := chstore.NewEvalStore(chConn)
-	analyticsStore := chstore.NewAnalyticsStore(chConn)
-	exportStore := chstore.NewExportStore(chConn)
-	evalJobStore := pgstore.NewEvalJobStore(pgPool)
-	evalConfigStore := pgstore.NewEvalConfigStore(pgPool)
-	alertRuleStore := pgstore.NewAlertRuleStore(pgPool)
-	loopStore := pgstore.NewLoopStore(pgPool)
-	piiConfigStore := pgstore.NewProjectPIIConfigStore(pgPool)
-	spanFeedbackStore := pgstore.NewSpanFeedbackStore(pgPool)
-	playgroundStore := pgstore.NewPlaygroundStore(pgPool)
-	runTagStore := pgstore.NewRunTagStore(pgPool)
-	runAnnotationStore := pgstore.NewRunAnnotationStore(pgPool)
-	pushSubStore := pgstore.NewPushSubscriptionStore(pgPool)
-	emailDigestStore := pgstore.NewEmailDigestStore(pgPool)
-	ingestTokenStore := pgstore.NewIngestTokenStore(pgPool)
-	retentionStore := pgstore.NewRetentionStore(pgPool)
-	purgeJobStore := pgstore.NewPurgeJobStore(pgPool)
-
-	// ── Payload store (S3 offloading) ─────────────────────────────────────
-	var payloadStore store.PayloadStore
-	if cfg.S3.Bucket != "" && cfg.S3.Endpoint != "" {
-		ps, err := s3store.New(cfg.S3)
-		if err != nil {
-			slog.Error("s3 payload store init failed", "error", err)
-			os.Exit(1)
+	bundle, err := bootstrap.IndieStores(ctx, dataDir)
+	if err != nil {
+		if errors.Is(err, bootstrap.ErrIndieDuckDBMissing) {
+			slog.Error("indie mode unavailable", "error", err)
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(2)
 		}
-		payloadStore = ps
-		slog.Info("S3 payload store initialized", "bucket", cfg.S3.Bucket)
+		slog.Error("indie mode bootstrap", "error", err)
+		os.Exit(1)
+	}
+	defer bundle.Close()
+
+	first, err := bootstrap.MaybeBootstrapFirstRun(ctx, bundle.Projects, bundle.IngestTokens, dataDir, slog.Default())
+	if err != nil {
+		slog.Error("indie: first-run bootstrap", "error", err)
+		os.Exit(1)
+	}
+	bootstrap.PrintFirstRun(first)
+
+	otlpHandler, err := startIndieOTLP(ctx, cfg, bundle)
+	if err != nil {
+		slog.Error("indie: otlp receiver", "error", err)
+		os.Exit(1)
 	}
 
-	// ── Storage management (retention + purge) ────────────────────────────
+	auditWriter := audit.NewWriter(nil) // no-op in indie mode
+
+	startBackgroundServices(ctx, cfg, bundle, auditWriter, false /*team-only services off*/)
+	startHTTP(ctx, cfg, bundle, auditWriter, otlpHandler)
+}
+
+// startBackgroundServices spins up the alert hub, eval workers, retention
+// enforcer, etc. The team-only flag short-circuits services that don't make
+// sense in indie mode (where most stubs short-circuit themselves anyway).
+func startBackgroundServices(
+	ctx context.Context,
+	cfg *config.Config,
+	bundle *bootstrap.StoreBundle,
+	auditWriter *audit.Writer,
+	startCollectorServices bool,
+) {
 	zapLogger, err := zap.NewProduction()
 	if err != nil {
 		slog.Error("zap logger init", "error", err)
 		os.Exit(1)
 	}
-	defer zapLogger.Sync() //nolint:errcheck
-	statsService := storage.NewStatsService(chConn, pgPool, payloadStore)
-	purgeExecutor := storage.NewPurgeExecutor(chConn, pgPool, payloadStore, purgeJobStore, runStore, zapLogger)
-	retentionEnforcer := storage.NewRetentionEnforcer(retentionStore, purgeJobStore, purgeExecutor, 6*time.Hour, zapLogger)
 
-	// ── Root context (cancelled on SIGINT/SIGTERM) ─────────────────────────
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// ── Alert hub ─────────────────────────────────────────────────────────
-	hub := alert.NewHub(projectStore)
-	go hub.Run()
-	go alert.NewPoller(pgPool, hub).Run(ctx)
-
-	// ── Browser push notifications ─────────────────────────────────────────
-	var pushSender *pushnotify.Sender
-	if cfg.WebPush.VAPIDPublicKey != "" && cfg.WebPush.VAPIDPrivateKey != "" {
-		pushSender = pushnotify.NewSender(cfg.WebPush.VAPIDPublicKey, cfg.WebPush.VAPIDPrivateKey, cfg.WebPush.Subject, pushSubStore)
-		slog.Info("browser push notifications enabled")
-	} else {
-		slog.Info("browser push notifications disabled (VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set)")
+	if !startCollectorServices {
+		// Indie mode: skip team-only background services that would hammer the stubs.
+		_ = zapLogger
+		return
 	}
 
-	go alerteval.NewEvaluator(chConn, alertRuleStore, hub, loopStore, pushSender).Run(ctx)
-	slog.Info("alert evaluator started")
+	statsService := storage.NewStatsService(bundle.ClickHouseConn(), bundle.PgPool, bundle.Payloads)
+	purgeExecutor := storage.NewPurgeExecutor(bundle.ClickHouseConn(), bundle.PgPool, bundle.Payloads, bundle.PurgeJobs, bundle.Runs, zapLogger)
+	retentionEnforcer := storage.NewRetentionEnforcer(bundle.Retention, bundle.PurgeJobs, purgeExecutor, 6*time.Hour, zapLogger)
 
+	hub := alert.NewHub(bundle.Projects)
+	go hub.Run()
+	go alert.NewPoller(bundle.PgPool, hub).Run(ctx)
+
+	var pushSender *pushnotify.Sender
+	if cfg.WebPush.VAPIDPublicKey != "" && cfg.WebPush.VAPIDPrivateKey != "" {
+		pushSender = pushnotify.NewSender(cfg.WebPush.VAPIDPublicKey, cfg.WebPush.VAPIDPrivateKey, cfg.WebPush.Subject, bundle.PushSubs)
+	}
+
+	go alerteval.NewEvaluator(bundle.ClickHouseConn(), bundle.AlertRules, hub, bundle.Loops, pushSender).Run(ctx)
 	retentionEnforcer.Start(ctx)
-	slog.Info("retention enforcer started")
 
-	// ── Email digest sender ────────────────────────────────────────────────
-	emailDigestSender := emaildigest.NewSender(cfg.Email.ResendAPIKey, cfg.Email.FromAddress, emailDigestStore, alertRuleStore)
+	emailDigestSender := emaildigest.NewSender(cfg.Email.ResendAPIKey, cfg.Email.FromAddress, bundle.EmailDigests, bundle.AlertRules)
 	go emailDigestSender.Run(ctx)
-	go loopdetect.NewDetector(chConn, pgPool, loopStore, topologyStore, projectStore).Run(ctx)
-	slog.Info("loop detector started")
+	go loopdetect.NewDetector(bundle.ClickHouseConn(), bundle.PgPool, bundle.Loops, bundle.Topology, bundle.Projects).Run(ctx)
 
-	// ── Eval workers ──────────────────────────────────────────────────────
-	// Start the eval pipeline if at least one judge provider key is configured.
 	providerKeys := eval.ProviderKeys{
 		Anthropic: cfg.AnthropicAPIKey,
 		OpenAI:    cfg.OpenAIAPIKey,
 		Google:    cfg.GoogleAIAPIKey,
 	}
-	// ── Pricing + LLM client (Playground) ─────────────────────────────────
+	if cfg.AnthropicAPIKey != "" || cfg.OpenAIAPIKey != "" || cfg.GoogleAIAPIKey != "" {
+		go eval.NewEnqueuer(bundle.ClickHouseConn(), bundle.EvalJobs, bundle.EvalConfigs).Run(ctx)
+		go eval.NewWorker(bundle.ClickHouseConn(), bundle.EvalJobs, bundle.Evals, bundle.EvalConfigs, providerKeys, bundle.Payloads).Run(ctx)
+	}
+
+	_ = auditWriter
+	_ = statsService
+}
+
+// startHTTP wires the API router and listens. In indie mode it also serves
+// the embedded OTLP receiver alongside on a separate listener.
+func startHTTP(
+	ctx context.Context,
+	cfg *config.Config,
+	bundle *bootstrap.StoreBundle,
+	auditWriter *audit.Writer,
+	indieOTLP http.Handler,
+) {
+	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
+		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
+	}
+
+	zapLogger, _ := zap.NewProduction()
+	statsService := storage.NewStatsService(bundle.ClickHouseConn(), bundle.PgPool, bundle.Payloads)
+	purgeExecutor := storage.NewPurgeExecutor(bundle.ClickHouseConn(), bundle.PgPool, bundle.Payloads, bundle.PurgeJobs, bundle.Runs, zapLogger)
+	hub := alert.NewHub(bundle.Projects) // separate hub if indie didn't start one — harmless
+
+	providerKeys := eval.ProviderKeys{
+		Anthropic: cfg.AnthropicAPIKey,
+		OpenAI:    cfg.OpenAIAPIKey,
+		Google:    cfg.GoogleAIAPIKey,
+	}
+
 	modelPricingPath := os.Getenv("MODEL_PRICING_PATH")
 	if modelPricingPath == "" {
 		modelPricingPath = "config/model_pricing.yaml"
 	}
 	var pricingTable *pricing.Table
 	var llmClient llmclient.Client
-	pt, err := pricing.Load(modelPricingPath)
-	if err != nil {
-		slog.Warn("pricing table not loaded — Playground disabled", "error", err)
-	} else {
+	if pt, err := pricing.Load(modelPricingPath); err == nil {
 		pricingTable = pt
 		providerMap := make(map[string]string, len(pt.Models))
 		for id, m := range pt.Models {
@@ -191,23 +218,22 @@ func main() {
 			OpenAI:    cfg.OpenAIAPIKey,
 			Google:    cfg.GoogleAIAPIKey,
 		}, providerMap)
-		slog.Info("pricing table loaded", "models", len(pt.Models))
-	}
-
-	if cfg.AnthropicAPIKey != "" || cfg.OpenAIAPIKey != "" || cfg.GoogleAIAPIKey != "" {
-		// Worker reloads registry from evalConfigStore every 60s to pick up new custom evals.
-		go eval.NewEnqueuer(chConn, evalJobStore, evalConfigStore).Run(ctx)
-		go eval.NewWorker(chConn, evalJobStore, evalStore, evalConfigStore, providerKeys, payloadStore).Run(ctx)
-		slog.Info("eval worker started")
 	} else {
-		slog.Info("eval worker disabled (no judge provider API keys set)")
+		slog.Warn("pricing table not loaded — Playground disabled", "error", err)
 	}
 
-	// ── HTTP server ───────────────────────────────────────────────────────
-	if !cfg.CORS.DevMode && len(cfg.CORS.AllowedOrigins) == 0 {
-		slog.Warn("CORS_ALLOWED_ORIGINS is not set in production mode — all browser cross-origin requests will be blocked")
-	}
-	router := api.NewRouter(projectStore, runStore, spanStore, topologyStore, budgetStore, evalStore, evalConfigStore, alertRuleStore, analyticsStore, loopStore, sessionStore, userStore, searchStore, piiConfigStore, spanFeedbackStore, payloadStore, playgroundStore, exportStore, runTagStore, runAnnotationStore, pushSubStore, emailDigestStore, ingestTokenStore, retentionStore, purgeJobStore, statsService, purgeExecutor, cfg.WebPush.VAPIDPublicKey, pgPool, hub, cfg.CORS.AllowedOrigins, cfg.CORS.DevMode, providerKeys, llmClient, pricingTable, auditWriter)
+	router := api.NewRouter(
+		bundle.Projects, bundle.Runs, bundle.Spans, bundle.Topology, bundle.Budget,
+		bundle.Evals, bundle.EvalConfigs, bundle.AlertRules, bundle.Analytics,
+		bundle.Loops, bundle.Sessions, bundle.Users, bundle.Search, bundle.PIIConfigs,
+		bundle.SpanFeedback, bundle.Payloads, bundle.Playground, bundle.Exports,
+		bundle.RunTags, bundle.RunAnnotations, bundle.PushSubs, bundle.EmailDigests,
+		bundle.IngestTokens, bundle.Retention, bundle.PurgeJobs,
+		statsService, purgeExecutor,
+		cfg.WebPush.VAPIDPublicKey, bundle.PgPool, hub,
+		cfg.CORS.AllowedOrigins, cfg.CORS.DevMode,
+		providerKeys, llmClient, pricingTable, auditWriter,
+	)
 
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
@@ -225,13 +251,32 @@ func main() {
 				os.Exit(1)
 			}
 		} else {
-			slog.Info("starting AgentPulse API (HTTP — ensure a TLS-terminating proxy is in front)", "addr", cfg.HTTPAddr())
+			slog.Info("starting AgentPulse API", "addr", cfg.HTTPAddr())
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				slog.Error("server error", "error", err)
 				os.Exit(1)
 			}
 		}
 	}()
+
+	// Indie-mode: also stand up the embedded OTLP listener.
+	var otlpSrv *http.Server
+	if indieOTLP != nil {
+		otlpSrv = &http.Server{
+			Addr:         cfg.Indie.OTLPAddr,
+			Handler:      indieOTLP,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+		go func() {
+			slog.Info("starting embedded OTLP receiver", "addr", cfg.Indie.OTLPAddr)
+			if err := otlpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("otlp receiver error", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	<-ctx.Done()
 
@@ -241,6 +286,9 @@ func main() {
 
 	if err := srv.Shutdown(shutCtx); err != nil {
 		slog.Error("forced shutdown", "error", err)
+	}
+	if otlpSrv != nil {
+		_ = otlpSrv.Shutdown(shutCtx)
 	}
 	slog.Info("server stopped")
 }

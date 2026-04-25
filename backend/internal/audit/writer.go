@@ -25,13 +25,21 @@ type Writer struct {
 	buf chan Event
 }
 
+// NewWriter constructs an audit writer. When ch is nil (indie mode, no
+// ClickHouse) Record is a no-op — indie mode prioritises operational
+// simplicity over retained audit trails.
 func NewWriter(ch driver.Conn) *Writer {
 	w := &Writer{ch: ch, buf: make(chan Event, 4096)}
-	go w.run()
+	if ch != nil {
+		go w.run()
+	}
 	return w
 }
 
 func (w *Writer) Record(e Event) {
+	if w.ch == nil {
+		return
+	}
 	select {
 	case w.buf <- e:
 	default:
