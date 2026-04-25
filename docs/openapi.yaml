@@ -1,0 +1,2363 @@
+# Hand-written spec — generated from router.go inspection. Run openapi-generator or redoc to render.
+openapi: "3.1.0"
+
+info:
+  title: AgentPulse API
+  version: "1.0.0"
+  description: >
+    OpenTelemetry-native observability platform for multi-agent AI systems.
+    Provides unified traces, cost tracking, evaluations, and alerting for AI agent workloads.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://your-deployment.example.com
+    description: Production (replace with your deployment URL)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Per-project API key. Pass as `Authorization: Bearer <project_api_key>`.
+        Used for all project-scoped read operations and most mutations.
+    AdminKeyAuth:
+      type: http
+      scheme: bearer
+      description: >
+        Admin-level key with elevated privileges. Pass as `Authorization: Bearer <admin_key>`.
+        Required for settings writes, loop-config writes, and storage mutations.
+
+  parameters:
+    projectID:
+      name: projectID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the project
+    runID:
+      name: runID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the run
+    spanID:
+      name: spanID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the span
+    ruleID:
+      name: ruleID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the rule
+    configID:
+      name: configID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the eval config
+    sessionID:
+      name: sessionID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the session
+    userID:
+      name: userID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the user
+    tokenID:
+      name: tokenID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the ingest token
+    jobID:
+      name: jobID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for the storage purge job
+    variantID:
+      name: variantID
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique identifier for a playground session variant
+    tag:
+      name: tag
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Tag value string
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid authentication credentials
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: unauthorized
+    NotFound:
+      description: The requested resource was not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: not found
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: invalid request
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: rate limit exceeded
+
+tags:
+  - name: Misc
+    description: Health checks and global utility endpoints
+  - name: Projects
+    description: Project management — create and inspect projects
+  - name: Runs
+    description: Agent run records — spans, loops, replay, topology, tags, annotations
+  - name: Spans
+    description: Individual OTel spans within a run, including feedback
+  - name: Evals
+    description: Evaluation configs, summaries, baselines, and dry-runs
+  - name: Budget
+    description: Budget rules and cost alert management
+  - name: Alerts
+    description: Alert rules and recent alert events
+  - name: Analytics
+    description: Aggregated cost, latency, success-rate, and volume metrics
+  - name: Sessions
+    description: User session tracking across runs
+  - name: Users
+    description: End-user cost and activity attribution
+  - name: IngestTokens
+    description: Per-project ingest token management (write-path auth)
+  - name: Storage
+    description: Storage stats, retention policy, and purge operations
+  - name: Playground
+    description: Interactive LLM playground for prompt experimentation
+  - name: Notifications
+    description: Push subscriptions and email digest settings
+  - name: LoopConfig
+    description: Loop detector configuration (read via BearerAuth, write via AdminKeyAuth)
+  - name: Settings
+    description: Project-level settings (read via BearerAuth, write via AdminKeyAuth)
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Health
+  # ---------------------------------------------------------------------------
+
+  /healthz:
+    get:
+      summary: Service health check
+      operationId: getHealth
+      tags: [Misc]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  # ---------------------------------------------------------------------------
+  # Projects (public — no auth)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects:
+    get:
+      summary: List all projects
+      operationId: listProjects
+      tags: [Projects]
+      responses:
+        "200":
+          description: Array of project summaries
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      summary: Create a new project
+      operationId: createProject
+      tags: [Projects]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Project creation payload — name, optional description, optional settings
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: my-agent-project
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Project created — returns full project object including generated API key
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ---------------------------------------------------------------------------
+  # Project-scoped (BearerAuth)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}:
+    get:
+      summary: Get project details
+      operationId: getProject
+      tags: [Projects]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Project details including metadata and settings
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/runs:
+    get:
+      summary: List runs for a project
+      operationId: listProjectRuns
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [running, completed, failed]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter runs started after this timestamp (RFC 3339)
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Filter runs started before this timestamp (RFC 3339)
+        - name: tags
+          in: query
+          schema:
+            type: string
+          description: Comma-separated list of tags to filter by
+      responses:
+        "200":
+          description: Paginated list of runs with summary stats
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/runs/compare:
+    get:
+      summary: Compare two or more runs side-by-side
+      operationId: compareRuns
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: runIDs
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Comma-separated list of run IDs to compare
+      responses:
+        "200":
+          description: Comparison payload including metrics delta, span counts, and cost diff
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/runs/compare/prompt-diff:
+    get:
+      summary: Show prompt-level diff between two runs
+      operationId: compareRunsPromptDiff
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: runA
+          in: query
+          required: true
+          schema:
+            type: string
+          description: First run ID
+        - name: runB
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Second run ID
+      responses:
+        "200":
+          description: Unified diff of prompt messages between the two runs
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Evals (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/evals/summary:
+    get:
+      summary: Get evaluation summary for a project
+      operationId: getEvalsSummary
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Aggregated eval scores, pass/fail counts, and trend data
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/evals/baseline:
+    get:
+      summary: Get eval baseline snapshot
+      operationId: getEvalsBaseline
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Baseline eval metrics used for regression comparison
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/evals/config:
+    get:
+      summary: List eval configs for a project
+      operationId: listEvalConfigs
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Array of eval configuration objects
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      summary: Create an eval config
+      operationId: createEvalConfig
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Eval config payload — name, scorer type (llm_judge, regex, exact_match),
+                prompt template, pass threshold, and optional schedule
+              required: [name, scorer_type]
+              properties:
+                name:
+                  type: string
+                scorer_type:
+                  type: string
+                  enum: [llm_judge, regex, exact_match, semantic_similarity]
+                prompt_template:
+                  type: string
+                pass_threshold:
+                  type: number
+                  format: float
+      responses:
+        "201":
+          description: Eval config created — returns full config object with generated ID
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/evals/config/{configID}:
+    get:
+      summary: Get a specific eval config
+      operationId: getEvalConfig
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/configID"
+      responses:
+        "200":
+          description: Eval config details
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update an eval config
+      operationId: updateEvalConfig
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/configID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial or full eval config update payload
+      responses:
+        "200":
+          description: Updated eval config
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete an eval config
+      operationId: deleteEvalConfig
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/configID"
+      responses:
+        "204":
+          description: Eval config deleted successfully
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/evals/config/dry-run:
+    post:
+      summary: Dry-run an eval config against recent spans
+      operationId: dryRunEvalConfig
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Eval config to test (same shape as createEvalConfig) plus optional
+                sample_size and span_filter to scope the dry-run
+              properties:
+                config:
+                  type: object
+                  description: Inline eval config (same fields as createEvalConfig)
+                sample_size:
+                  type: integer
+                  default: 10
+                span_filter:
+                  type: object
+                  description: Optional filter to scope which spans are sampled
+      responses:
+        "200":
+          description: Dry-run results — per-span scores, pass/fail breakdown, estimated cost
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Budget (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/budget/rules:
+    get:
+      summary: List budget rules for a project
+      operationId: listBudgetRules
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Array of budget rules with limits, windows, and action configs
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      summary: Create a budget rule
+      operationId: createBudgetRule
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Budget rule — limit_usd, window (hourly/daily/monthly), action (alert/block),
+                optional webhook_url with HMAC signing config
+              required: [limit_usd, window, action]
+              properties:
+                limit_usd:
+                  type: number
+                  format: float
+                window:
+                  type: string
+                  enum: [hourly, daily, monthly]
+                action:
+                  type: string
+                  enum: [alert, block]
+                webhook_url:
+                  type: string
+                  format: uri
+      responses:
+        "201":
+          description: Budget rule created
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/budget/rules/{ruleID}:
+    get:
+      summary: Get a budget rule
+      operationId: getBudgetRule
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      responses:
+        "200":
+          description: Budget rule details
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update a budget rule
+      operationId: updateBudgetRule
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial or full budget rule update payload
+      responses:
+        "200":
+          description: Updated budget rule
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete a budget rule
+      operationId: deleteBudgetRule
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      responses:
+        "204":
+          description: Budget rule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/budget/alerts/recent:
+    get:
+      summary: Get recent budget alert events
+      operationId: getRecentBudgetAlerts
+      tags: [Budget]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of recent budget alert events with triggered rule and cost snapshot
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Alerts (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/alerts/rules:
+    get:
+      summary: List alert rules for a project
+      operationId: listAlertRules
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Array of alert rules with conditions and notification channel configs
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      summary: Create an alert rule
+      operationId: createAlertRule
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Alert rule — metric (error_rate, latency_p95, cost), condition, threshold,
+                window_seconds, notification channels (webhook, email, push)
+              required: [metric, condition, threshold]
+              properties:
+                metric:
+                  type: string
+                  enum: [error_rate, latency_p95, cost, token_count]
+                condition:
+                  type: string
+                  enum: [gt, lt, gte, lte]
+                threshold:
+                  type: number
+                  format: float
+                window_seconds:
+                  type: integer
+                notification_channels:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "201":
+          description: Alert rule created
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/alerts/rules/{ruleID}:
+    get:
+      summary: Get an alert rule
+      operationId: getAlertRule
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      responses:
+        "200":
+          description: Alert rule details
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update an alert rule
+      operationId: updateAlertRule
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial or full alert rule update payload
+      responses:
+        "200":
+          description: Updated alert rule
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete an alert rule
+      operationId: deleteAlertRule
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/ruleID"
+      responses:
+        "204":
+          description: Alert rule deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/alerts/events/recent:
+    get:
+      summary: Get recent alert events
+      operationId: getRecentAlertEvents
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of recent alert events with triggered rule and snapshot
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Analytics (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/analytics/cost:
+    get:
+      summary: Get cost analytics time series
+      operationId: getAnalyticsCost
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day]
+            default: hour
+      responses:
+        "200":
+          description: Cost time series bucketed by granularity, plus total and per-model breakdown
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/analytics/latency:
+    get:
+      summary: Get latency analytics time series
+      operationId: getAnalyticsLatency
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day]
+            default: hour
+        - name: percentiles
+          in: query
+          schema:
+            type: string
+            default: "p50,p95,p99"
+          description: Comma-separated list of percentiles to return
+      responses:
+        "200":
+          description: Latency percentile time series
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/analytics/success-rate:
+    get:
+      summary: Get success rate analytics time series
+      operationId: getAnalyticsSuccessRate
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day]
+            default: hour
+      responses:
+        "200":
+          description: Success/failure rate time series
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/analytics/volume:
+    get:
+      summary: Get request volume analytics time series
+      operationId: getAnalyticsVolume
+      tags: [Analytics]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [minute, hour, day]
+            default: hour
+      responses:
+        "200":
+          description: Span/run volume time series with token throughput
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Sessions (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/sessions:
+    get:
+      summary: List sessions for a project
+      operationId: listSessions
+      tags: [Sessions]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Paginated list of sessions with run counts and cost totals
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/sessions/{sessionID}:
+    get:
+      summary: Get a specific session
+      operationId: getSession
+      tags: [Sessions]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/sessionID"
+      responses:
+        "200":
+          description: Session detail with associated runs and aggregated metrics
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Users (project-scoped)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/users:
+    get:
+      summary: List users attributed to a project
+      operationId: listUsers
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [cost, run_count, last_seen]
+            default: cost
+      responses:
+        "200":
+          description: Paginated list of users with per-user cost, run count, and last-seen timestamp
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/users/{userID}:
+    get:
+      summary: Get user detail and cost breakdown
+      operationId: getUser
+      tags: [Users]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/userID"
+      responses:
+        "200":
+          description: User profile with cost breakdown, run list, and activity timeline
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Search & Export
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/search:
+    get:
+      summary: Full-text search across runs and spans
+      operationId: searchProject
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query string
+        - name: types
+          in: query
+          schema:
+            type: string
+            default: "runs,spans"
+          description: Comma-separated resource types to search
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Search results grouped by resource type with match highlights
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/export/runs:
+    get:
+      summary: Export runs as NDJSON or CSV
+      operationId: exportRuns
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [ndjson, csv]
+            default: ndjson
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Streaming NDJSON or CSV export of runs
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/export/spans:
+    get:
+      summary: Export spans as NDJSON or CSV
+      operationId: exportSpans
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [ndjson, csv]
+            default: ndjson
+        - name: runID
+          in: query
+          schema:
+            type: string
+          description: Filter spans to a specific run
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Streaming NDJSON or CSV export of spans
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Push notifications
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/push/vapid-public-key:
+    get:
+      summary: Get the VAPID public key for Web Push subscriptions
+      operationId: getVapidPublicKey
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: VAPID public key string (base64url)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/push/subscribe:
+    post:
+      summary: Create a Web Push subscription for this project
+      operationId: createPushSubscription
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Web Push subscription object as returned by the browser PushManager.subscribe() API
+                (endpoint, keys.p256dh, keys.auth)
+              required: [endpoint, keys]
+              properties:
+                endpoint:
+                  type: string
+                  format: uri
+                keys:
+                  type: object
+                  properties:
+                    p256dh:
+                      type: string
+                    auth:
+                      type: string
+      responses:
+        "201":
+          description: Push subscription registered
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    delete:
+      summary: Remove a Web Push subscription
+      operationId: deletePushSubscription
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Subscription endpoint to unregister
+              required: [endpoint]
+              properties:
+                endpoint:
+                  type: string
+                  format: uri
+      responses:
+        "204":
+          description: Push subscription removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Email digest notifications
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/notifications/email-digest:
+    get:
+      summary: Get email digest configuration
+      operationId: getEmailDigest
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Email digest settings including schedule, recipients, and content options
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update email digest configuration
+      operationId: updateEmailDigest
+      tags: [Notifications]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Email digest settings — enabled flag, cron schedule, recipients list, content flags
+              properties:
+                enabled:
+                  type: boolean
+                schedule:
+                  type: string
+                  description: Cron expression (e.g. "0 9 * * 1" for Monday 9am)
+                recipients:
+                  type: array
+                  items:
+                    type: string
+                    format: email
+                include_cost:
+                  type: boolean
+                include_evals:
+                  type: boolean
+                include_alerts:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated email digest configuration
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Ingest tokens
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/ingest-tokens:
+    get:
+      summary: List ingest tokens for a project
+      operationId: listIngestTokens
+      tags: [IngestTokens]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Array of ingest tokens with metadata (token values are masked after creation)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    post:
+      summary: Create a new ingest token
+      operationId: createIngestToken
+      tags: [IngestTokens]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Ingest token creation — optional label and optional expiry
+              properties:
+                label:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        "201":
+          description: >
+            Ingest token created — returns full token value (only time it is shown in plaintext)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/ingest-tokens/{tokenID}:
+    delete:
+      summary: Revoke an ingest token
+      operationId: deleteIngestToken
+      tags: [IngestTokens]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/tokenID"
+      responses:
+        "204":
+          description: Ingest token revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Span feedback
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/spans/{spanID}/feedback:
+    post:
+      summary: Submit feedback for a span
+      operationId: createSpanFeedback
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/spanID"
+      x-rateLimit:
+        requests: 10
+        period: 60s
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Feedback payload — thumbs up/down rating and optional free-text comment
+              required: [rating]
+              properties:
+                rating:
+                  type: string
+                  enum: [thumbs_up, thumbs_down]
+                comment:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "201":
+          description: Feedback submitted
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+    get:
+      summary: Get feedback for a span
+      operationId: getSpanFeedback
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/spanID"
+      responses:
+        "200":
+          description: Feedback record(s) for the span
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete feedback for a span
+      operationId: deleteSpanFeedback
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/spanID"
+      responses:
+        "204":
+          description: Feedback deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/runs/{runID}/feedback:
+    get:
+      summary: Get all feedback for a run
+      operationId: getRunFeedback
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: Aggregated feedback across all spans in the run
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Loop config (read BearerAuth, write AdminKeyAuth)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/loop-config:
+    get:
+      summary: Get loop detector configuration
+      operationId: getLoopConfig
+      tags: [LoopConfig]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Loop detector settings — max_iterations, window_seconds, sensitivity
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update loop detector configuration (admin only)
+      operationId: updateLoopConfig
+      tags: [LoopConfig]
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Loop config update — max_iterations, window_seconds, similarity_threshold,
+                action (alert/abort), optional webhook_url
+              properties:
+                max_iterations:
+                  type: integer
+                window_seconds:
+                  type: integer
+                similarity_threshold:
+                  type: number
+                  format: float
+                action:
+                  type: string
+                  enum: [alert, abort]
+      responses:
+        "200":
+          description: Updated loop config
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Settings (read BearerAuth, write AdminKeyAuth)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/settings:
+    get:
+      summary: Get project settings
+      operationId: getProjectSettings
+      tags: [Settings]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Project settings including retention policy, notification config, and feature flags
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update project settings (admin only)
+      operationId: updateProjectSettings
+      tags: [Settings]
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Partial settings update — any settable project-level configuration fields
+      responses:
+        "200":
+          description: Updated project settings
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Project health, tags, live SSE
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/health:
+    get:
+      summary: Get project-level health status
+      operationId: getProjectHealth
+      tags: [Projects]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Composite health status — ingest pipeline, storage, eval pipeline
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/live:
+    get:
+      summary: Server-Sent Events stream for live project activity
+      operationId: getProjectLiveStream
+      tags: [Projects]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: >
+            SSE stream — events: run.started, run.completed, span.ingested, alert.fired,
+            budget.breached. Each event is a JSON-encoded object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/tags:
+    get:
+      summary: List all tags used in a project
+      operationId: listProjectTags
+      tags: [Projects]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Array of tag strings with usage counts
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Storage (read BearerAuth, write AdminKeyAuth)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/storage/stats:
+    get:
+      summary: Get storage usage statistics
+      operationId: getStorageStats
+      tags: [Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Storage stats — span count, total bytes in ClickHouse, Postgres row counts
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/storage/retention:
+    get:
+      summary: Get data retention policy
+      operationId: getStorageRetention
+      tags: [Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      responses:
+        "200":
+          description: Retention policy settings — spans TTL, runs TTL, evals TTL
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update data retention policy (admin only)
+      operationId: updateStorageRetention
+      tags: [Storage]
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Retention policy — spans_ttl_days, runs_ttl_days, evals_ttl_days
+              properties:
+                spans_ttl_days:
+                  type: integer
+                runs_ttl_days:
+                  type: integer
+                evals_ttl_days:
+                  type: integer
+      responses:
+        "200":
+          description: Updated retention policy
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/storage/purge-jobs/{jobID}:
+    get:
+      summary: Get purge job status
+      operationId: getStoragePurgeJob
+      tags: [Storage]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/jobID"
+      responses:
+        "200":
+          description: Purge job status — queued/running/completed/failed, rows deleted, elapsed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/storage/purge/run/{runID}:
+    post:
+      summary: Purge all data for a specific run (admin only)
+      operationId: purgeRunStorage
+      tags: [Storage]
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "202":
+          description: Purge job queued — returns job ID for status polling
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/storage/purge/age:
+    post:
+      summary: Purge all data older than a specified age (admin only)
+      operationId: purgeStorageByAge
+      tags: [Storage]
+      security:
+        - AdminKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Age-based purge config — older_than_days specifies cutoff
+              required: [older_than_days]
+              properties:
+                older_than_days:
+                  type: integer
+                  minimum: 1
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: If true, returns estimated rows to delete without actually deleting
+      responses:
+        "202":
+          description: Purge job queued — returns job ID for status polling
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------------------
+  # Playground (project-scoped, optional)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects/{projectID}/playground/sessions:
+    post:
+      summary: Create a playground session
+      operationId: createPlaygroundSession
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Playground session config — name, base model, system prompt,
+                and initial variants (A/B prompt variants)
+              required: [name, model]
+              properties:
+                name:
+                  type: string
+                model:
+                  type: string
+                  example: gpt-4o
+                system_prompt:
+                  type: string
+                variants:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "201":
+          description: Playground session created with initial variant(s)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    get:
+      summary: List playground sessions
+      operationId: listPlaygroundSessions
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Paginated list of playground sessions
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects/{projectID}/playground/sessions/{sessionID}:
+    get:
+      summary: Get a playground session
+      operationId: getPlaygroundSession
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/sessionID"
+      responses:
+        "200":
+          description: Playground session with variants, run history, and A/B stats
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete a playground session
+      operationId: deletePlaygroundSession
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/sessionID"
+      responses:
+        "204":
+          description: Playground session deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/playground/sessions/{sessionID}/variants/{variantID}:
+    put:
+      summary: Update a playground variant
+      operationId: updatePlaygroundVariant
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/sessionID"
+        - $ref: "#/components/parameters/variantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Variant update — name, system_prompt, model, temperature, max_tokens
+      responses:
+        "200":
+          description: Updated variant
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{projectID}/playground/sessions/{sessionID}/variants/{variantID}/run:
+    post:
+      summary: Execute a playground variant with a prompt
+      operationId: runPlaygroundVariant
+      tags: [Playground]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/projectID"
+        - $ref: "#/components/parameters/sessionID"
+        - $ref: "#/components/parameters/variantID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Execution payload — messages array, optional overrides for temperature/max_tokens
+              required: [messages]
+              properties:
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [user, assistant]
+                      content:
+                        type: string
+                temperature:
+                  type: number
+                  format: float
+                max_tokens:
+                  type: integer
+      responses:
+        "200":
+          description: LLM completion result with token usage and latency
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Run-scoped routes (RunAuth — Bearer validates against run's project)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/runs/{runID}:
+    get:
+      summary: Get run details
+      operationId: getRun
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: Run details — status, span count, cost, latency, metadata
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/spans:
+    get:
+      summary: List spans for a run
+      operationId: listRunSpans
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: span_kind
+          in: query
+          schema:
+            type: string
+          description: Filter by OTel span kind (llm, tool, agent, etc.)
+      responses:
+        "200":
+          description: Paginated list of spans for the run
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/spans/{spanID}:
+    get:
+      summary: Get a specific span
+      operationId: getRunSpan
+      tags: [Spans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+        - $ref: "#/components/parameters/spanID"
+      responses:
+        "200":
+          description: Full span detail including attributes, events, and links
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/replay-bundle:
+    get:
+      summary: Download replay bundle for a run
+      operationId: getRunReplayBundle
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: >
+            Replay bundle archive (zip/tar) containing all spans, prompts, and tool calls
+            sufficient to replay or audit the run
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/evals:
+    get:
+      summary: List eval results for a run
+      operationId: getRunEvals
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: Flat list of eval results for each scored span in the run
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/evals/grouped:
+    get:
+      summary: Get eval results grouped by scorer
+      operationId: getRunEvalsGrouped
+      tags: [Evals]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: Eval results grouped by scorer config with aggregate pass rate per scorer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/loops:
+    get:
+      summary: Get detected loops for a run
+      operationId: getRunLoops
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: >
+            List of detected loop events — span ID where loop was detected,
+            iteration count, similarity scores, and timestamps
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/live:
+    get:
+      summary: Server-Sent Events stream for live run updates
+      operationId: getRunLiveStream
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: >
+            SSE stream for a running agent — events: span.started, span.completed,
+            loop.detected, run.completed. Closes when run ends.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/topology/graph:
+    get:
+      summary: Get agent topology graph for a run
+      operationId: getRunTopologyGraph
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: >
+            Topology graph as nodes + edges (React Flow compatible) —
+            nodes represent agents/tools, edges represent invocation relationships
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/tags:
+    post:
+      summary: Add tags to a run
+      operationId: addRunTags
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Tags to add to this run
+              required: [tags]
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Updated tag list for the run
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    get:
+      summary: List tags for a run
+      operationId: listRunTags
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "200":
+          description: Array of tag strings attached to this run
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/tags/{tag}:
+    delete:
+      summary: Remove a tag from a run
+      operationId: deleteRunTag
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+        - $ref: "#/components/parameters/tag"
+      responses:
+        "204":
+          description: Tag removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/runs/{runID}/annotation:
+    put:
+      summary: Set or update annotation for a run
+      operationId: putRunAnnotation
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Run annotation — free-text note or structured label
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  maxLength: 5000
+      responses:
+        "200":
+          description: Annotation saved
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Delete annotation from a run
+      operationId: deleteRunAnnotation
+      tags: [Runs]
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/runID"
+      responses:
+        "204":
+          description: Annotation deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------------------
+  # Global routes
+  # ---------------------------------------------------------------------------
+
+  /api/v1/models:
+    get:
+      summary: List available models (requires playground to be configured)
+      operationId: listModels
+      tags: [Playground]
+      responses:
+        "200":
+          description: Array of available model identifiers with capability flags
+        "503":
+          description: Playground not configured on this deployment
+
+  /api/v1/ws/alerts:
+    get:
+      summary: WebSocket stream for real-time alert events (all projects the key has access to)
+      operationId: wsAlerts
+      tags: [Alerts]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [websocket]
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+            enum: [Upgrade]
+      responses:
+        "101":
+          description: >
+            WebSocket upgrade — once connected, server pushes JSON alert event frames
+            (same schema as alert events from /alerts/events/recent) in real time
+        "401":
+          $ref: "#/components/responses/Unauthorized"

@@ -59,12 +59,12 @@ Backend works, frontend doesn't. Each is a small React page talking to existing 
 
 ## Tier 5 — documentation
 
-- [ ] **`docs/deployment.md`** — Fly.io, Railway, Cloud Run, bare-VPS recipes. At minimum, a working `fly.toml` + `Dockerfile` for the backend. _(model: sonnet · effort: medium — working config needs testing, not just prose)_
-- [ ] **`docs/troubleshooting.md`** — extracted and expanded from [getting-started.md §Troubleshooting](./getting-started.md#troubleshooting). Cover: ClickHouse disk full, Postgres pool exhaustion, collector lag behind agents, stuck eval jobs, websocket disconnects. _(model: haiku · effort: low — expansion of existing content)_
-- [ ] **OpenAPI / Swagger** — generate from Chi handlers (or hand-write). Replaces the hand-maintained API reference in the README. Lets SDK authors (and Claude Code) reason about endpoints. _(model: sonnet · effort: high — hand-writing or generating from Chi handlers across many routes)_
-- [ ] **Architecture Decision Records.** Short docs explaining: why ClickHouse + Postgres (not one store), why React Flow for topology, why OTel-native instead of bespoke protocol, why Go instead of Rust/Python. _(model: opus · effort: medium — requires reasoning about why decisions were made, not just what)_
-- [ ] **`docs/cost-sizing.md`** — empirical resource footprint + cloud sizing. "1M spans/day on a $20 DO droplet" kind of numbers. _(model: sonnet · effort: medium — needs empirical numbers; some benchmarking required)_
-- [ ] **`docs/sdk-versions.md`** — tested Python / Node / framework matrix. TypeScript SDK already has CI matrix; publish the actual supported combinations. _(model: haiku · effort: low — matrix table, mostly already known)_
+- [x] **`docs/deployment.md`** — Fly.io, Railway, Cloud Run, bare-VPS recipes. At minimum, a working `fly.toml` + `Dockerfile` for the backend. _(model: sonnet · effort: medium — working config needs testing, not just prose)_
+- [x] **`docs/troubleshooting.md`** — extracted and expanded from [getting-started.md §Troubleshooting](./getting-started.md#troubleshooting). Cover: ClickHouse disk full, Postgres pool exhaustion, collector lag behind agents, stuck eval jobs, websocket disconnects. _(model: haiku · effort: low — expansion of existing content)_
+- [x] **OpenAPI / Swagger** — hand-written OpenAPI 3.1 spec at `docs/openapi.yaml` (2,364 lines, 85 operations, 63 paths). Covers all Chi routes with correct auth schemes, parameters, and response codes. _(model: sonnet · effort: high — hand-writing or generating from Chi handlers across many routes)_
+- [x] **Architecture Decision Records.** Four ADRs in `docs/adr/`: ADR-001 dual-storage, ADR-002 React Flow, ADR-003 OTel-native, ADR-004 Go backend. _(model: opus · effort: medium — requires reasoning about why decisions were made, not just what)_
+- [x] **`docs/cost-sizing.md`** — resource footprint + cloud sizing estimates with methodology and self-benchmark commands. _(model: sonnet · effort: medium — needs empirical numbers; some benchmarking required)_
+- [x] **`docs/sdk-versions.md`** — tested Python / Node / framework matrix sourced from actual pyproject.toml and package.json versions. _(model: haiku · effort: low — matrix table, mostly already known)_
 
 ## Tier 6 — product direction
 
