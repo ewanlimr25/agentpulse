@@ -1,0 +1,116 @@
+name: Collector CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "collector/**"
+  pull_request:
+    paths:
+      - "collector/**"
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: collector/go.mod
+          cache-dependency-path: collector/go.sum
+
+      - name: go vet
+        working-directory: collector
+        run: go vet ./...
+
+      - name: go build
+        working-directory: collector
+        run: go build ./...
+
+      - name: go test
+        working-directory: collector
+        run: go test -race -count=1 ./...
+
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: build-test
+
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8-alpine
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DB: agentpulse
+          CLICKHOUSE_USER: agentpulse
+          CLICKHOUSE_PASSWORD: agentpulse
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8123/ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: collector/go.mod
+          cache-dependency-path: collector/go.sum
+
+      - name: Run ClickHouse migrations
+        run: |
+          for f in $(ls migrations/clickhouse/*.sql | sort); do
+            case "$f" in *down*) continue ;; esac
+            echo "Applying $f"
+            curl -sS --fail \
+              "http://agentpulse:agentpulse@localhost:8123/?database=agentpulse&multiquery=1" \
+              --data-binary @"$f"
+          done
+
+      - name: Build collector
+        run: |
+          mkdir -p bin
+          cd collector && go build -o ../bin/agentpulse-collector ./cmd/collector/
+
+      - name: Start collector
+        env:
+          CLICKHOUSE_ENDPOINT: "clickhouse://agentpulse:agentpulse@localhost:9000/agentpulse"
+          CLICKHOUSE_DATABASE: "agentpulse"
+        run: ./bin/agentpulse-collector --config=collector/config.ci.yaml &
+
+      - name: Wait for collector health
+        run: |
+          deadline=$((SECONDS + 60))
+          until curl -sf http://localhost:13133; do
+            if [ $SECONDS -ge $deadline ]; then
+              echo "Collector did not become healthy within 60s"
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Send smoke span via OTLP HTTP
+        run: |
+          curl -sf --fail \
+            -X POST http://localhost:4318/v1/traces \
+            -H "Content-Type: application/json" \
+            -d '{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"ci-smoke"}}]},"scopeSpans":[{"spans":[{"traceId":"aabbccdd00112233aabbccdd00112233","spanId":"aabbccdd00112233","name":"smoke-test","kind":1,"startTimeUnixNano":"1000000000000","endTimeUnixNano":"2000000000000","status":{"code":1}}]}]}]}'
+
+      - name: Wait for collector flush
+        run: sleep 5
+
+      - name: Assert span written to ClickHouse
+        run: |
+          count=$(curl -sS "http://agentpulse:agentpulse@localhost:8123/?database=agentpulse" \
+            --data "SELECT count() FROM spans WHERE trace_id = 'aabbccdd00112233aabbccdd00112233'")
+          echo "Row count: $count"
+          if [ "$count" != "1" ]; then
+            echo "Expected 1 row, got: $count"
+            exit 1
+          fi

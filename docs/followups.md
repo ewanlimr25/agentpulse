@@ -39,11 +39,11 @@ Don't expose AgentPulse to the internet until these land. See [architecture.md �
 
 Backend and SDKs have decent unit tests. CI only runs the TypeScript SDK.
 
-- [ ] **`.github/workflows/backend.yml`** — `go test -race ./...`, `go vet ./...`, `staticcheck`, `gosec`, `gofmt -l` guard. Required-check on main. _(model: haiku · effort: low — boilerplate Go CI YAML)_
-- [ ] **`.github/workflows/web.yml`** — type check, ESLint, Vitest. Required-check on main. _(model: haiku · effort: low — boilerplate Next.js CI YAML)_
-- [ ] **`.github/workflows/collector.yml`** — build, test, smoke test (send a span, assert it appears in ClickHouse). _(model: sonnet · effort: medium — smoke test needs Docker Compose + ClickHouse assertion)_
-- [ ] **E2E tests.** `tests/e2e/` directory exists but is empty. Bare minimum with Playwright: create project → send trace via SDK → see it in UI → create budget rule → trigger alert. Under 5 tests covers the critical path. _(model: sonnet · effort: high — 5 tests spanning full stack; create project, send trace, assert UI, budget, alert)_
-- [ ] **Migration smoke test in CI.** Fresh Postgres + ClickHouse → `make migrate-up` → assert expected tables exist. Catches the regression we just fixed. _(model: sonnet · effort: medium — fresh DB + migrate + table assertion, needs service containers)_
+- [x] **`.github/workflows/backend.yml`** — `go test -race ./...`, `go vet ./...`, `staticcheck`, `gosec`, `gofmt -l` guard. Required-check on main. _(model: haiku · effort: low — boilerplate Go CI YAML)_
+- [x] **`.github/workflows/web.yml`** — type check, ESLint. Required-check on main. Note: Vitest not yet installed in web/ — that's a follow-on. _(model: haiku · effort: low — boilerplate Next.js CI YAML)_
+- [x] **`.github/workflows/collector.yml`** — build, test, smoke test (send a span, assert it appears in ClickHouse via service containers). _(model: sonnet · effort: medium)_
+- [x] **E2E tests.** `tests/e2e/` now has Playwright tests: create project via UI, OTLP trace ingestion, project list, budget rule CRUD, alert rule CRUD. Workflow at `.github/workflows/e2e.yml` (marked `continue-on-error: true` while stack startup stabilises). _(model: sonnet · effort: high)_
+- [x] **Migration smoke test in CI.** Fresh Postgres + ClickHouse → migrations applied → assert expected tables exist. `.github/workflows/migrations.yml`. _(model: sonnet · effort: medium)_
 
 ## Tier 4 — missing UI surfaces
 

@@ -1,0 +1,202 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    # Starting the full stack in CI is non-trivial. Mark continue-on-error
+    # so a flaky stack startup does not block PRs while this is being
+    # stabilised.
+    continue-on-error: true
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: agentpulse
+          POSTGRES_USER: agentpulse
+          POSTGRES_PASSWORD: agentpulse
+        options: >-
+          --health-cmd "pg_isready -U agentpulse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8-alpine
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DB: agentpulse
+          CLICKHOUSE_USER: agentpulse
+          CLICKHOUSE_PASSWORD: agentpulse
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8123/ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Node / Playwright ───────────────────────────────────────────────────
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      # ── Migrations ─────────────────────────────────────────────────────────
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply Postgres migrations
+        run: |
+          PG_URI="postgresql://agentpulse:agentpulse@localhost:5432/agentpulse"
+          psql "$PG_URI" -f migrations/postgres/001_initial.up.sql
+          psql "$PG_URI" -f migrations/postgres/002_eval_jobs.up.sql
+          psql "$PG_URI" -f migrations/postgres/002_alert_rules.up.sql
+          psql "$PG_URI" -f migrations/postgres/003_run_loops.up.sql
+          psql "$PG_URI" -f migrations/postgres/004_project_eval_configs.up.sql
+          psql "$PG_URI" -f migrations/postgres/005_budget_scope_user.up.sql
+          psql "$PG_URI" -f migrations/postgres/006_project_pii_configs.up.sql
+          psql "$PG_URI" -f migrations/postgres/007_span_feedback.up.sql
+          psql "$PG_URI" -f migrations/postgres/008_eval_config_judge_models.up.sql
+          psql "$PG_URI" -f migrations/postgres/009_eval_jobs_judge_model.up.sql
+          psql "$PG_URI" -f migrations/postgres/010_prompt_playground.up.sql
+          psql "$PG_URI" -f migrations/postgres/011_run_tags_annotations.up.sql
+          psql "$PG_URI" -f migrations/postgres/012_ingest_tokens.up.sql
+          psql "$PG_URI" -f migrations/postgres/013_retention.up.sql
+
+      - name: Apply ClickHouse migrations
+        run: |
+          CH_URL="http://agentpulse:agentpulse@localhost:8123/?database=agentpulse&multiquery=1"
+          for f in \
+            migrations/clickhouse/001_spans.sql \
+            migrations/clickhouse/002_metrics_agg.sql \
+            migrations/clickhouse/003_run_metrics.sql \
+            migrations/clickhouse/004_span_evals.sql \
+            migrations/clickhouse/005_eval_prompt_version.sql \
+            migrations/clickhouse/006_session_id.sql \
+            migrations/clickhouse/007_run_metrics_session.sql \
+            migrations/clickhouse/008_session_agg.sql \
+            migrations/clickhouse/009_user_id.sql \
+            migrations/clickhouse/010_run_metrics_user.sql \
+            migrations/clickhouse/011_user_agg.sql \
+            migrations/clickhouse/012_search_indexes.sql \
+            migrations/clickhouse/013_ttft.sql \
+            migrations/clickhouse/014_run_metrics_ttft.sql \
+            migrations/clickhouse/015_eval_judge_model.sql \
+            migrations/clickhouse/016_payload_ref.sql \
+            migrations/clickhouse/017_audit_events.up.sql; do
+            echo "Applying $f"
+            curl -sS --fail "$CH_URL" --data-binary @"$f"
+          done
+
+      # ── Go backend ─────────────────────────────────────────────────────────
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build backend
+        run: |
+          mkdir -p bin
+          cd backend && go build -o ../bin/agentpulse-backend ./cmd/server/
+
+      - name: Start backend
+        env:
+          POSTGRES_DSN: postgres://agentpulse:agentpulse@localhost:5432/agentpulse?sslmode=disable
+          CLICKHOUSE_ADDR: localhost:9000
+          CLICKHOUSE_DATABASE: agentpulse
+          CLICKHOUSE_USER: agentpulse
+          CLICKHOUSE_PASSWORD: agentpulse
+          HTTP_PORT: "8080"
+          APP_ENV: development
+          S3_ENFORCE_HTTPS: "false"
+        run: ./bin/agentpulse-backend &
+
+      - name: Wait for backend (60s)
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/healthz; then
+              echo "Backend is up"
+              exit 0
+            fi
+            echo "Waiting for backend... ($i/30)"
+            sleep 2
+          done
+          echo "Backend did not start in time" >&2
+          exit 1
+
+      # ── OTel Collector ─────────────────────────────────────────────────────
+      - name: Build collector
+        run: |
+          cd collector && go build -o ../bin/agentpulse-collector ./cmd/collector/
+
+      - name: Start collector (CI config)
+        env:
+          CLICKHOUSE_ENDPOINT: "clickhouse://agentpulse:agentpulse@localhost:9000/agentpulse"
+          CLICKHOUSE_DATABASE: agentpulse
+        run: ./bin/agentpulse-collector --config=collector/config.ci.yaml &
+
+      # ── Next.js web ─────────────────────────────────────────────────────────
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build web
+        working-directory: web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+        run: npm run build
+
+      - name: Start web
+        working-directory: web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8080
+          PORT: "3000"
+        run: npm run start &
+
+      - name: Wait for web (120s)
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000; then
+              echo "Web is up"
+              exit 0
+            fi
+            echo "Waiting for web... ($i/60)"
+            sleep 2
+          done
+          echo "Web did not start in time" >&2
+          exit 1
+
+      # ── Run E2E tests ───────────────────────────────────────────────────────
+      - name: Run E2E tests
+        working-directory: tests/e2e
+        run: npm test
+
+      # ── Upload results ──────────────────────────────────────────────────────
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 14

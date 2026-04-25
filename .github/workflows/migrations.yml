@@ -1,0 +1,135 @@
+name: Migrations
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "migrations/**"
+      - ".github/workflows/migrations.yml"
+  pull_request:
+    paths:
+      - "migrations/**"
+      - ".github/workflows/migrations.yml"
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: agentpulse
+          POSTGRES_USER: agentpulse
+          POSTGRES_PASSWORD: agentpulse
+        options: >-
+          --health-cmd "pg_isready -U agentpulse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8-alpine
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DB: agentpulse
+          CLICKHOUSE_USER: agentpulse
+          CLICKHOUSE_PASSWORD: agentpulse
+        options: >-
+          --health-cmd "wget -q -O- http://localhost:8123/ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply Postgres migrations
+        run: |
+          PG_URI="postgresql://agentpulse:agentpulse@localhost:5432/agentpulse"
+          psql "$PG_URI" -f migrations/postgres/001_initial.up.sql
+          psql "$PG_URI" -f migrations/postgres/002_eval_jobs.up.sql
+          psql "$PG_URI" -f migrations/postgres/002_alert_rules.up.sql
+          psql "$PG_URI" -f migrations/postgres/003_run_loops.up.sql
+          psql "$PG_URI" -f migrations/postgres/004_project_eval_configs.up.sql
+          psql "$PG_URI" -f migrations/postgres/005_budget_scope_user.up.sql
+          psql "$PG_URI" -f migrations/postgres/006_project_pii_configs.up.sql
+          psql "$PG_URI" -f migrations/postgres/007_span_feedback.up.sql
+          psql "$PG_URI" -f migrations/postgres/008_eval_config_judge_models.up.sql
+          psql "$PG_URI" -f migrations/postgres/009_eval_jobs_judge_model.up.sql
+          psql "$PG_URI" -f migrations/postgres/010_prompt_playground.up.sql
+          psql "$PG_URI" -f migrations/postgres/011_run_tags_annotations.up.sql
+          psql "$PG_URI" -f migrations/postgres/012_ingest_tokens.up.sql
+          psql "$PG_URI" -f migrations/postgres/013_retention.up.sql
+
+      - name: Apply ClickHouse migrations
+        run: |
+          CH_URL="http://agentpulse:agentpulse@localhost:8123/?database=agentpulse&multiquery=1"
+          for f in \
+            migrations/clickhouse/001_spans.sql \
+            migrations/clickhouse/002_metrics_agg.sql \
+            migrations/clickhouse/003_run_metrics.sql \
+            migrations/clickhouse/004_span_evals.sql \
+            migrations/clickhouse/005_eval_prompt_version.sql \
+            migrations/clickhouse/006_session_id.sql \
+            migrations/clickhouse/007_run_metrics_session.sql \
+            migrations/clickhouse/008_session_agg.sql \
+            migrations/clickhouse/009_user_id.sql \
+            migrations/clickhouse/010_run_metrics_user.sql \
+            migrations/clickhouse/011_user_agg.sql \
+            migrations/clickhouse/012_search_indexes.sql \
+            migrations/clickhouse/013_ttft.sql \
+            migrations/clickhouse/014_run_metrics_ttft.sql \
+            migrations/clickhouse/015_eval_judge_model.sql \
+            migrations/clickhouse/016_payload_ref.sql \
+            migrations/clickhouse/017_audit_events.up.sql; do
+            echo "Applying $f"
+            curl -sS --fail "$CH_URL" --data-binary @"$f"
+          done
+
+      - name: Assert Postgres tables
+        run: |
+          PG_URI="postgresql://agentpulse:agentpulse@localhost:5432/agentpulse"
+          TABLES=$(psql "$PG_URI" -t -c "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;")
+          echo "Tables found:"
+          echo "$TABLES"
+
+          MISSING=()
+          for table in projects runs budget_rules eval_configs ingest_tokens; do
+            if ! echo "$TABLES" | grep -qw "$table"; then
+              MISSING+=("$table")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "ERROR: Missing expected tables: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "All required Postgres tables present."
+
+      - name: Assert ClickHouse tables
+        run: |
+          TABLES=$(curl -sS "http://agentpulse:agentpulse@localhost:8123/?database=agentpulse" --data "SHOW TABLES")
+          echo "Tables found:"
+          echo "$TABLES"
+
+          MISSING=()
+          for table in spans audit_events metrics_agg; do
+            if ! echo "$TABLES" | grep -qw "$table"; then
+              MISSING+=("$table")
+            fi
+          done
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "ERROR: Missing expected ClickHouse tables: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "All required ClickHouse tables present."

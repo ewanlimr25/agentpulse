@@ -1,0 +1,48 @@
+# AgentPulse Collector — CI Configuration
+#
+# Minimal pipeline for smoke testing in GitHub Actions.
+# No Postgres-dependent processors (authenforceproc, piimaskerproc,
+# budgetenforceproc, ratelimitproc) and no topologyexporter.
+
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    send_batch_size: 10
+    timeout: 1s
+
+  agentsemanticproc:
+    attributes_config: ./config/agent_attributes.yaml
+    pricing_config: ./config/model_pricing.yaml
+
+exporters:
+  clickhouseexporter:
+    endpoint: "${env:CLICKHOUSE_ENDPOINT}"
+    database: "${env:CLICKHOUSE_DATABASE}"
+    table: "spans"
+    batch_size: 10
+    flush_interval: 2s
+
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch, agentsemanticproc]
+      exporters:  [clickhouseexporter, debug]
+
+  telemetry:
+    metrics:
+      level: none
