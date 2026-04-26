@@ -11,6 +11,7 @@ from agentpulse.spans import (
     mcp_tool_call_ctx,
     mcp_list_tools,
     mcp_list_tools_ctx,
+    mcp_server_ctx,
     record_mcp_tool_result,
     record_mcp_discovery,
 )
@@ -240,3 +241,78 @@ def test_record_mcp_discovery_empty_list(reset_otel):
     s = spans[0]
     assert s.attributes.get(attrs.MCP_TOOL_COUNT) == "0"
     assert s.attributes.get(attrs.MCP_DISCOVERED_TOOLS) is None
+
+
+# ── Cross-process correlation: session/request IDs ────────────────────────────
+
+
+def test_mcp_tool_call_propagates_correlation_ids(reset_otel):
+    @mcp_tool_call(
+        server_name="srv",
+        tool_name="t",
+        session_id="sess-42",
+        request_id="req-7",
+        client_name="claude-code",
+        transport="stdio",
+    )
+    def call():
+        return None
+
+    call()
+    s = reset_otel.get_finished_spans()[0]
+    assert s.attributes.get(attrs.MCP_SESSION_ID) == "sess-42"
+    assert s.attributes.get(attrs.MCP_REQUEST_ID) == "req-7"
+    assert s.attributes.get(attrs.MCP_CLIENT_NAME) == "claude-code"
+    assert s.attributes.get(attrs.MCP_TRANSPORT) == "stdio"
+
+
+def test_mcp_tool_call_ctx_propagates_correlation_ids(reset_otel):
+    with mcp_tool_call_ctx(
+        server_name="srv",
+        tool_name="t",
+        session_id="sess-1",
+        request_id="req-2",
+    ):
+        pass
+
+    s = reset_otel.get_finished_spans()[0]
+    assert s.attributes.get(attrs.MCP_SESSION_ID) == "sess-1"
+    assert s.attributes.get(attrs.MCP_REQUEST_ID) == "req-2"
+
+
+# ── mcp_server_ctx (server-side execution) ────────────────────────────────────
+
+
+def test_mcp_server_ctx_sets_span_kind(reset_otel):
+    with mcp_server_ctx(server_name="my-mcp", tool_name="echo"):
+        pass
+    s = reset_otel.get_finished_spans()[0]
+    assert s.attributes.get(attrs.SPAN_KIND) == "mcp.server"
+    assert s.attributes.get(attrs.MCP_SERVER_NAME) == "my-mcp"
+    assert s.attributes.get(attrs.MCP_TOOL_NAME) == "echo"
+    assert s.attributes.get(attrs.MCP_TRANSPORT) == "stdio"
+
+
+def test_mcp_server_ctx_correlates_with_client(reset_otel):
+    with mcp_server_ctx(
+        server_name="srv",
+        tool_name="t",
+        session_id="shared-sess",
+        request_id="shared-req",
+        client_name="cursor",
+        transport="sse",
+    ):
+        pass
+    s = reset_otel.get_finished_spans()[0]
+    assert s.attributes.get(attrs.MCP_SESSION_ID) == "shared-sess"
+    assert s.attributes.get(attrs.MCP_REQUEST_ID) == "shared-req"
+    assert s.attributes.get(attrs.MCP_CLIENT_NAME) == "cursor"
+    assert s.attributes.get(attrs.MCP_TRANSPORT) == "sse"
+
+
+def test_mcp_server_ctx_error(reset_otel):
+    with pytest.raises(RuntimeError, match="boom"):
+        with mcp_server_ctx(server_name="srv", tool_name="t"):
+            raise RuntimeError("boom")
+    s = reset_otel.get_finished_spans()[0]
+    assert s.status.status_code == StatusCode.ERROR

@@ -19,6 +19,7 @@ AgentSpanKind = Literal[
     "memory.write",
     "mcp.tool_call",
     "mcp.list_tools",
+    "mcp.server",
 ]
 
 LLM_CALL: AgentSpanKind = "llm.call"
@@ -28,6 +29,7 @@ MEMORY_READ: AgentSpanKind = "memory.read"
 MEMORY_WRITE: AgentSpanKind = "memory.write"
 MCP_TOOL_CALL: AgentSpanKind = "mcp.tool_call"
 MCP_LIST_TOOLS: AgentSpanKind = "mcp.list_tools"
+MCP_SERVER: AgentSpanKind = "mcp.server"
 
 # ── Identity ───────────────────────────────────────────────────────────────────
 
@@ -70,3 +72,10 @@ MCP_INPUT_SCHEMA = "agentpulse.mcp.input_schema"
 MCP_OUTPUT_SCHEMA = "agentpulse.mcp.output_schema"
 MCP_TOOL_COUNT = "agentpulse.mcp.tool_count"
 MCP_DISCOVERED_TOOLS = "agentpulse.mcp.discovered_tools"
+
+# Session/request correlation — propagate across the MCP boundary so a stitched
+# trace shows the IDE-side invocation and the MCP-server-side execution.
+MCP_SESSION_ID = "agentpulse.mcp.session_id"
+MCP_REQUEST_ID = "agentpulse.mcp.request_id"
+MCP_CLIENT_NAME = "agentpulse.mcp.client_name"
+MCP_TRANSPORT = "agentpulse.mcp.transport"

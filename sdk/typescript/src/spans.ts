@@ -229,6 +229,15 @@ export interface McpToolCallOptions {
   agentName?: string
   spanName?: string
   runId?: string
+  /** MCP session ID. Set the same value on the corresponding mcp.server span
+   *  for cross-process trace stitching. */
+  sessionId?: string
+  /** JSON-RPC request ID (paired with sessionId for one-shot correlation). */
+  requestId?: string
+  /** Identifies the calling client, e.g. "claude-code". */
+  clientName?: string
+  /** MCP transport in use, e.g. "stdio" | "sse" | "http". */
+  transport?: string
 }
 
 /** Wrap an MCP tool invocation in an mcp.tool_call span.
@@ -247,9 +256,57 @@ export function mcpToolCall<T>(
       span.setAttribute(attrs.MCP_SERVER_NAME, options.serverName)
       span.setAttribute(attrs.MCP_TOOL_NAME, options.toolName)
       span.setAttribute(attrs.TOOL_NAME, options.toolName)
+      if (options.sessionId) span.setAttribute(attrs.MCP_SESSION_ID, options.sessionId)
+      if (options.requestId) span.setAttribute(attrs.MCP_REQUEST_ID, options.requestId)
+      if (options.clientName) span.setAttribute(attrs.MCP_CLIENT_NAME, options.clientName)
+      if (options.transport) span.setAttribute(attrs.MCP_TRANSPORT, options.transport)
     },
     fn,
     options.agentName,
+    options.runId,
+  )
+}
+
+// ── MCP server-side execution ─────────────────────────────────────────────────
+
+export interface McpServerOptions {
+  /** Name of the MCP server reporting the span. */
+  serverName: string
+  /** Tool that the server is executing. */
+  toolName: string
+  /** Same value as the caller's mcpToolCall.sessionId, when known. */
+  sessionId?: string
+  /** Same value as the caller's mcpToolCall.requestId, when known. */
+  requestId?: string
+  /** Identifies the calling client, e.g. "claude-code". */
+  clientName?: string
+  /** MCP transport in use; defaults to "stdio". */
+  transport?: string
+  spanName?: string
+  runId?: string
+}
+
+/** Wrap a server-side MCP tool execution in an mcp.server span. */
+export function mcpServer<T>(
+  options: McpServerOptions,
+  fn: (span: Span) => T | Promise<T>,
+): Promise<T> {
+  const name = options.spanName ?? 'mcp.server'
+  const transport = options.transport ?? 'stdio'
+  return withSpan(
+    name,
+    attrs.MCP_SERVER,
+    (span) => {
+      span.setAttribute(attrs.MCP_SERVER_NAME, options.serverName)
+      span.setAttribute(attrs.MCP_TOOL_NAME, options.toolName)
+      span.setAttribute(attrs.TOOL_NAME, options.toolName)
+      span.setAttribute(attrs.MCP_TRANSPORT, transport)
+      if (options.sessionId) span.setAttribute(attrs.MCP_SESSION_ID, options.sessionId)
+      if (options.requestId) span.setAttribute(attrs.MCP_REQUEST_ID, options.requestId)
+      if (options.clientName) span.setAttribute(attrs.MCP_CLIENT_NAME, options.clientName)
+    },
+    fn,
+    undefined,
     options.runId,
   )
 }

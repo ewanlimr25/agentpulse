@@ -237,7 +237,35 @@ func flattenSpan(sp otlpSpan, resAttrs map[string]string, serviceName, fallbackP
 	row.OutputTokens = parseUint32(attrs["agentpulse.output_tokens"])
 	row.CostUSD = parseFloat(attrs["agentpulse.cost_usd"])
 	row.TtftMs = parseFloat(attrs["agentpulse.ttft_ms"])
+
+	// MCP normalization — promote the un-prefixed semconv attributes to the
+	// AgentPulse-prefixed keys so DuckDB queries see a consistent surface.
+	normalizeMCP(row.Attributes)
 	return row
+}
+
+// normalizeMCP copies MCP semantic-convention attributes (mcp.* / agentpulse.mcp.*)
+// to a canonical agentpulse.mcp.* key so consumers don't need to handle multiple
+// variants. Mirrors collector/processor/agentsemanticproc field_extraction logic.
+func normalizeMCP(attrs map[string]string) {
+	if len(attrs) == 0 {
+		return
+	}
+	pairs := []struct{ canonical, alt string }{
+		{"agentpulse.mcp.server_name", "mcp.server.name"},
+		{"agentpulse.mcp.tool_name", "mcp.tool.name"},
+		{"agentpulse.mcp.session_id", "mcp.session.id"},
+		{"agentpulse.mcp.request_id", "mcp.request.id"},
+		{"agentpulse.mcp.client_name", "mcp.client.name"},
+		{"agentpulse.mcp.transport", "mcp.transport"},
+	}
+	for _, p := range pairs {
+		if attrs[p.canonical] == "" {
+			if v := attrs[p.alt]; v != "" {
+				attrs[p.canonical] = v
+			}
+		}
+	}
 }
 
 func pickProjectID(attrs, resAttrs map[string]string, fallback string) string {

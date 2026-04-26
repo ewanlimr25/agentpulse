@@ -42,6 +42,7 @@ from agentpulse.spans import (
     llm_call_ctx,
     mcp_list_tools,
     mcp_list_tools_ctx,
+    mcp_server_ctx,
     mcp_tool_call,
     mcp_tool_call_ctx,
     memory_read,
@@ -80,6 +81,7 @@ __all__ = [
     "memory_write_ctx",
     "mcp_tool_call_ctx",
     "mcp_list_tools_ctx",
+    "mcp_server_ctx",
     # Helpers
     "record_llm_usage",
     "record_stream_first_token",

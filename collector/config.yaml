@@ -10,13 +10,27 @@ extensions:
   health_check:
     endpoint: "0.0.0.0:13133"
 
+  # Bearer-token auth at the OTLP receiver boundary. Validates
+  # `Authorization: Bearer <token>` against project_ingest_tokens.
+  # Default `required: false` is warn-mode: rejected requests are logged but
+  # still pass through. Flip AGENTPULSE_OTLP_REQUIRE_BEARER=true once your
+  # SDKs are emitting Bearer headers to enforce fail-closed.
+  agentpulsebearerauth:
+    dsn: "${env:POSTGRES_DSN:-postgres://agentpulse:agentpulse@postgres:5432/agentpulse?sslmode=disable}"
+    required: ${env:AGENTPULSE_OTLP_REQUIRE_BEARER:-false}
+    cache_ttl: 60s
+
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: "0.0.0.0:4317"   # gRPC — primary for SDKs
+        auth:
+          authenticator: agentpulsebearerauth
       http:
         endpoint: "0.0.0.0:4318"   # HTTP/protobuf — for browser/HTTP clients
+        auth:
+          authenticator: agentpulsebearerauth
 
 processors:
   # 0. Validate ingest token — reject unauthenticated spans before consuming rate-limit budget
@@ -82,7 +96,7 @@ exporters:
     verbosity: basic
 
 service:
-  extensions: [health_check]
+  extensions: [health_check, agentpulsebearerauth]
 
   pipelines:
     traces:

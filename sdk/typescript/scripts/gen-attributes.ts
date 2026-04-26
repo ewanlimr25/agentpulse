@@ -46,6 +46,7 @@ async function main() {
     '  | "memory.write"',
     '  | "mcp.tool_call"',
     '  | "mcp.list_tools"',
+    '  | "mcp.server"',
     '',
     'export const LLM_CALL: AgentSpanKind = "llm.call"',
     'export const TOOL_CALL: AgentSpanKind = "tool.call"',
@@ -54,6 +55,7 @@ async function main() {
     'export const MEMORY_WRITE: AgentSpanKind = "memory.write"',
     'export const MCP_TOOL_CALL: AgentSpanKind = "mcp.tool_call"',
     'export const MCP_LIST_TOOLS: AgentSpanKind = "mcp.list_tools"',
+    'export const MCP_SERVER: AgentSpanKind = "mcp.server"',
     '',
     '// ── Identity ────────────────────────────────────────────────────────────────',
     '',
@@ -96,6 +98,10 @@ async function main() {
     `export const MCP_OUTPUT_SCHEMA = ${JSON.stringify(firstEntry(fe.mcp_output_schema))} as const`,
     `export const MCP_TOOL_COUNT = ${JSON.stringify(firstEntry(fe.mcp_tool_count))} as const`,
     `export const MCP_DISCOVERED_TOOLS = ${JSON.stringify(firstEntry(fe.mcp_discovered_tools))} as const`,
+    `export const MCP_SESSION_ID = ${JSON.stringify(firstEntry(fe.mcp_session_id))} as const`,
+    `export const MCP_REQUEST_ID = ${JSON.stringify(firstEntry(fe.mcp_request_id))} as const`,
+    `export const MCP_CLIENT_NAME = ${JSON.stringify(firstEntry(fe.mcp_client_name))} as const`,
+    `export const MCP_TRANSPORT = ${JSON.stringify(firstEntry(fe.mcp_transport))} as const`,
   ]
 
   const outDir = path.dirname(OUT_PATH)

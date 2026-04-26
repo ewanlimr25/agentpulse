@@ -323,17 +323,26 @@ def mcp_tool_call(
     tool_name: str,
     agent_name: Optional[str] = None,
     span_name: Optional[str] = None,
+    session_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    client_name: Optional[str] = None,
+    transport: Optional[str] = None,
 ) -> Callable[[F], F]:
-    """Decorator for MCP tool invocation spans.
+    """Decorator for MCP tool invocation spans (client side).
 
-    Sets agentpulse.span_kind = "mcp.tool_call", mcp server name, and tool name.
-    Also sets tool.name so existing tool analytics capture MCP tool calls.
+    Sets agentpulse.span_kind = "mcp.tool_call", mcp server name, tool name,
+    and optional session/request correlation IDs that bridge this span with
+    the matching server-side mcp.server span.
 
     Args:
         server_name: Name of the MCP server, e.g. "filesystem-server".
         tool_name: Name of the tool being called, e.g. "read_file".
         agent_name: Name of the agent invoking this tool.
         span_name: Override the span name (defaults to function name).
+        session_id: MCP session ID for cross-process correlation.
+        request_id: JSON-RPC request ID.
+        client_name: Identifies the calling client (e.g. "claude-code").
+        transport: MCP transport in use (e.g. "stdio", "sse", "http").
     """
     def decorator(fn: F) -> F:
         name = span_name or fn.__name__
@@ -343,6 +352,14 @@ def mcp_tool_call(
             span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
             span.set_attribute(attrs.MCP_TOOL_NAME, tool_name)
             span.set_attribute(attrs.TOOL_NAME, tool_name)
+            if session_id:
+                span.set_attribute(attrs.MCP_SESSION_ID, session_id)
+            if request_id:
+                span.set_attribute(attrs.MCP_REQUEST_ID, request_id)
+            if client_name:
+                span.set_attribute(attrs.MCP_CLIENT_NAME, client_name)
+            if transport:
+                span.set_attribute(attrs.MCP_TRANSPORT, transport)
 
         return _make_wrapper(fn, name, attrs.MCP_TOOL_CALL, apply_attrs)
     return decorator
@@ -354,6 +371,10 @@ def mcp_tool_call_ctx(
     tool_name: str,
     agent_name: Optional[str] = None,
     span_name: str = "mcp.tool_call",
+    session_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    client_name: Optional[str] = None,
+    transport: Optional[str] = None,
 ) -> Generator[Span, None, None]:
     """Context manager form of mcp_tool_call."""
     with _get_tracer().start_as_current_span(span_name) as span:
@@ -361,6 +382,54 @@ def mcp_tool_call_ctx(
         span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
         span.set_attribute(attrs.MCP_TOOL_NAME, tool_name)
         span.set_attribute(attrs.TOOL_NAME, tool_name)
+        if session_id:
+            span.set_attribute(attrs.MCP_SESSION_ID, session_id)
+        if request_id:
+            span.set_attribute(attrs.MCP_REQUEST_ID, request_id)
+        if client_name:
+            span.set_attribute(attrs.MCP_CLIENT_NAME, client_name)
+        if transport:
+            span.set_attribute(attrs.MCP_TRANSPORT, transport)
+        try:
+            yield span
+        except Exception as exc:
+            span.set_status(StatusCode.ERROR, str(exc))
+            raise
+
+
+# ── MCP server-side execution ─────────────────────────────────────────────────
+#
+# Server-side MCP tool execution. Pair with mcp_tool_call_ctx on the caller
+# side using a shared session_id/request_id for stitched cross-process traces.
+
+@contextmanager
+def mcp_server_ctx(
+    server_name: str,
+    tool_name: str,
+    session_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    client_name: Optional[str] = None,
+    transport: str = "stdio",
+    span_name: str = "mcp.server",
+) -> Generator[Span, None, None]:
+    """Context manager for an MCP server-side tool execution span.
+
+    Use this inside an MCP server's tool handler to record what the server
+    actually did. Setting session_id/request_id to the same values used on the
+    client side lets AgentPulse stitch the two halves into a single trace.
+    """
+    with _get_tracer().start_as_current_span(span_name) as span:
+        _set_common_attrs(span, attrs.MCP_SERVER, agent_name=None)
+        span.set_attribute(attrs.MCP_SERVER_NAME, server_name)
+        span.set_attribute(attrs.MCP_TOOL_NAME, tool_name)
+        span.set_attribute(attrs.TOOL_NAME, tool_name)
+        span.set_attribute(attrs.MCP_TRANSPORT, transport)
+        if session_id:
+            span.set_attribute(attrs.MCP_SESSION_ID, session_id)
+        if request_id:
+            span.set_attribute(attrs.MCP_REQUEST_ID, request_id)
+        if client_name:
+            span.set_attribute(attrs.MCP_CLIENT_NAME, client_name)
         try:
             yield span
         except Exception as exc:

@@ -24,12 +24,17 @@ const (
 	attrTtftMs        = "agentpulse.ttft_ms"
 
 	// MCP (Model Context Protocol) attributes
-	attrMCPServerName     = "agentpulse.mcp.server_name"
-	attrMCPToolName       = "agentpulse.mcp.tool_name"
-	attrMCPInputSchema    = "agentpulse.mcp.input_schema"
-	attrMCPOutputSchema   = "agentpulse.mcp.output_schema"
-	attrMCPToolCount      = "agentpulse.mcp.tool_count"
+	attrMCPServerName      = "agentpulse.mcp.server_name"
+	attrMCPToolName        = "agentpulse.mcp.tool_name"
+	attrMCPInputSchema     = "agentpulse.mcp.input_schema"
+	attrMCPOutputSchema    = "agentpulse.mcp.output_schema"
+	attrMCPToolCount       = "agentpulse.mcp.tool_count"
 	attrMCPDiscoveredTools = "agentpulse.mcp.discovered_tools"
+	// Session/request correlation — bridges client-side and server-side MCP spans.
+	attrMCPSessionID  = "agentpulse.mcp.session_id"
+	attrMCPRequestID  = "agentpulse.mcp.request_id"
+	attrMCPClientName = "agentpulse.mcp.client_name"
+	attrMCPTransport  = "agentpulse.mcp.transport"
 )
 
 // semanticProcessor enriches OTel spans with agent semantic fields.
@@ -153,6 +158,18 @@ func (p *semanticProcessor) enrichSpan(span ptrace.Span) {
 		}
 		if v := p.extractField("mcp_discovered_tools", attrs); v != "" {
 			attrs.PutStr(attrMCPDiscoveredTools, v)
+		}
+		if v := p.extractField("mcp_session_id", attrs); v != "" {
+			attrs.PutStr(attrMCPSessionID, v)
+		}
+		if v := p.extractField("mcp_request_id", attrs); v != "" {
+			attrs.PutStr(attrMCPRequestID, v)
+		}
+		if v := p.extractField("mcp_client_name", attrs); v != "" {
+			attrs.PutStr(attrMCPClientName, v)
+		}
+		if v := p.extractField("mcp_transport", attrs); v != "" {
+			attrs.PutStr(attrMCPTransport, v)
 		}
 	}
 }

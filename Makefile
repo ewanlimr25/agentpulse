@@ -113,6 +113,12 @@ cli-build: ## Build the agentpulse-cli binary to tools/agentpulse-cli
 cli-install: ## Install the agentpulse-cli binary to /usr/local/bin
 	cd backend && go install ./cmd/agentpulse-cli
 
+mcp-build: ## Build the agentpulse-mcp binary (MCP server for Claude Code/Cursor)
+	cd backend && go build -o ../tools/agentpulse-mcp ./cmd/agentpulse-mcp
+
+mcp-install: ## Install the agentpulse-mcp binary to /usr/local/bin
+	cd backend && go install ./cmd/agentpulse-mcp
+
 # ── Frontend ──────────────────────────────────────────────────────────────────
 
 web-install: ## Install frontend dependencies

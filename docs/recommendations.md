@@ -60,7 +60,7 @@ Everything below expands these five, plus P1/P2 recommendations, plus a concrete
 | S3 payload offload | ✅ | ✅ (req'd) | partial | ❌ | ✅ | ❌ | ✅ |
 | CI quality gates | ✅ | partial | ❌ | ❌ | ✅ | ❌ | partial |
 | Slack/Discord notifs | ✅ | partial | ❌ | partial | ❌ | ❌ | partial |
-| **MCP-native observability** | 🟡 span kind | ❌ | ❌ | ❌ | MCP server | partial | ❌ |
+| **MCP-native observability** | ✅ end-to-end + MCP server | ❌ | ❌ | ❌ | MCP server | partial | ❌ |
 | **Trajectory eval** | ❌ | ❌ | partial | ❌ | ✅ | partial | ❌ |
 | **Online eval (sampled prod)** | ❌ | partial | partial | ❌ | ✅ | ❌ | ✅ |
 | **Time-travel replay** | 🟡 bundle only | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
@@ -186,7 +186,31 @@ Keep ClickHouse + Postgres + separate collector as "team mode," selected by star
 | 100 sessions/day | <500 MB | ~50 MB per 100k spans (DuckDB compression) |
 | 1M spans/day | ~1 GB | growth dominated by payloads |
 
-#### P0-2. MCP-native observability (plus auth tightening)
+#### P0-2. MCP-native observability (plus auth tightening) — ✅ shipped (April 2026)
+
+**Status (2026-04-26):** P0-2 is feature-complete. Full write-up in
+[docs/mcp.md](./mcp.md).
+
+| Slice | Status |
+|---|---|
+| `mcp.server` span kind for server-side execution | ✅ shipped |
+| Cross-process correlation attrs (`mcp.session_id`, `mcp.request_id`, `mcp.client_name`, `mcp.transport`) — collector + Python + TS | ✅ shipped |
+| Indie OTLP receiver normalizes `mcp.*` → `agentpulse.mcp.*` | ✅ shipped |
+| `mcp_server_ctx` (Python) / `mcpServer()` (TS) helpers for server-side spans | ✅ shipped |
+| `agentpulse-mcp` binary — JSON-RPC 2.0 over stdio | ✅ shipped |
+| MCP tools: `search_traces`, `get_run_details`, `compare_prompts`, `replay_run`, `current_budget_status` | ✅ shipped |
+| `agentpulsebearerauth` collector extension — `Authorization: Bearer` against `project_ingest_tokens` | ✅ shipped |
+| Warn-mode default + `AGENTPULSE_OTLP_REQUIRE_BEARER=true` to fail-closed | ✅ shipped |
+| Documentation (`docs/mcp.md`) with Claude Code IDE config snippet | ✅ shipped |
+
+**Files of note**
+
+- `backend/cmd/agentpulse-mcp/` — the MCP server binary.
+- `collector/extension/agentpulsebearerauth/` — the receiver-level auth extension.
+- `collector/processor/agentsemanticproc/processor.go` — extracts new MCP correlation attrs.
+- `sdk/python/src/agentpulse/spans.py`, `sdk/typescript/src/spans.ts` — client + server SDK helpers.
+
+#### P0-2 (original brief — preserved for reference)
 
 **Problem.** Every reviewed platform is weak on MCP except Braintrust (consumer-side MCP server only, not server-side MCP observability). Claude Code, Cursor, and Windsurf users generate a rising share of MCP tool calls; they're the target buyer.
 

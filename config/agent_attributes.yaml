@@ -27,6 +27,7 @@ span_kind_detection:
       "memory_write": "memory.write"
       "mcp_tool_call": "mcp.tool_call"
       "mcp_list_tools": "mcp.list_tools"
+      "mcp_server": "mcp.server"
 
   # AgentPulse explicit override — set this in your spans for unambiguous classification
   - attribute: "agentpulse.span.kind"
@@ -44,6 +45,7 @@ span_kind_detection:
       "memory.write": "memory.write"
       "mcp.tool_call": "mcp.tool_call"
       "mcp.list_tools": "mcp.list_tools"
+      "mcp.server": "mcp.server"
 
 # ── Field extraction ──────────────────────────────────────────────────────────
 #
@@ -125,6 +127,22 @@ field_extraction:
 
   mcp_discovered_tools:
     - "agentpulse.mcp.discovered_tools"
+
+  mcp_session_id:
+    - "agentpulse.mcp.session_id"
+    - "mcp.session.id"
+
+  mcp_request_id:
+    - "agentpulse.mcp.request_id"
+    - "mcp.request.id"
+
+  mcp_client_name:
+    - "agentpulse.mcp.client_name"
+    - "mcp.client.name"
+
+  mcp_transport:
+    - "agentpulse.mcp.transport"
+    - "mcp.transport"
 
 # ── Cost computation ──────────────────────────────────────────────────────────
 #

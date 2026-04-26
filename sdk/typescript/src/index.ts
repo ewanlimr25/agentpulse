@@ -18,6 +18,7 @@ export {
   memoryWrite,
   mcpToolCall,
   mcpListTools,
+  mcpServer,
   recordMcpToolResult,
   recordMcpDiscovery,
 } from './spans.js'
@@ -29,6 +30,7 @@ export type {
   MemoryWriteOptions,
   McpToolCallOptions,
   McpListToolsOptions,
+  McpServerOptions,
   McpToolResultOptions,
   McpDiscoveryOptions,
 } from './spans.js'

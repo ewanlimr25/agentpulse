@@ -10,6 +10,7 @@ import (
 
 	"github.com/agentpulse/agentpulse/collector/exporter/clickhouseexporter"
 	"github.com/agentpulse/agentpulse/collector/exporter/topologyexporter"
+	"github.com/agentpulse/agentpulse/collector/extension/agentpulsebearerauth"
 	"github.com/agentpulse/agentpulse/collector/processor/agentsemanticproc"
 	"github.com/agentpulse/agentpulse/collector/processor/authenforceproc"
 	"github.com/agentpulse/agentpulse/collector/processor/budgetenforceproc"
@@ -25,6 +26,7 @@ func components() (otelcol.Factories, error) {
 	// Extensions
 	factories.Extensions, err = otelcol.MakeFactoryMap(
 		healthcheckextension.NewFactory(),
+		agentpulsebearerauth.NewFactory(), // OTLP-receiver-level Bearer auth
 	)
 	if err != nil {
 		return otelcol.Factories{}, err
