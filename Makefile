@@ -4,6 +4,7 @@
         test test-collector test-backend test-web test-sdk-ts \
         sdk-ts-install sdk-ts-codegen sdk-ts-build \
         cli-build cli-install \
+        indie-bundle indie-build \
         seed lint
 
 SHELL := /bin/bash
@@ -125,6 +126,21 @@ web-build: ## Build the frontend for production
 
 test-web: ## Run frontend tests
 	cd web && npm test
+
+# ── Indie mode (single-binary) ───────────────────────────────────────────────
+
+indie-bundle: ## Build the Next.js static export and embed it under backend/internal/web/dist
+	@echo "Building static export of web/ ..."
+	cd web && AGENTPULSE_INDIE_BUILD=1 npm run build
+	@echo "Copying web/out → backend/internal/web/dist ..."
+	rm -rf backend/internal/web/dist
+	mkdir -p backend/internal/web/dist
+	cp -R web/out/. backend/internal/web/dist/
+	@echo "UI bundle ready ($$(du -sh backend/internal/web/dist | awk '{print $$1}'))"
+
+indie-build: indie-bundle ## Build the indie-mode single binary (CGO + duckdb)
+	cd backend && CGO_ENABLED=1 go build -tags=duckdb -o ../tools/agentpulse-server ./cmd/server
+	@echo "Built: tools/agentpulse-server (run with AGENTPULSE_MODE=indie ./tools/agentpulse-server)"
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 

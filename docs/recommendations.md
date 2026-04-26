@@ -133,9 +133,9 @@ Priority is impact × cost-to-indie-dev — the degree to which this moves the n
 
 ### P0 — ship in the next 8 weeks
 
-#### P0-1. Single-binary "Indie Mode" (SQLite + DuckDB backend) — 🟡 foundation shipped (April 2026)
+#### P0-1. Single-binary "Indie Mode" (SQLite + DuckDB backend) — ✅ shipped (April 2026)
 
-**Status (2026-04-25):** the indie-mode foundation + a vertical slice landed in this commit. `AGENTPULSE_MODE=indie ./agentpulse-server` (built with `-tags=duckdb`) now boots in <2 s, auto-creates `~/.agentpulse/{agentpulse.db, spans.duckdb, payloads/}`, prints a one-time bearer token, listens for OTLP on `:4318`, and serves the API on `:8080`. End-to-end smoke test (POST `/v1/traces` → GET `/api/v1/projects/.../runs`) passes. The remaining store ports (~20 stores) plus embedded UI bundle and `agentpulse migrate --to=team` are the follow-up sessions tracked below.
+**Status (2026-04-26):** indie mode is feature-complete. `AGENTPULSE_MODE=indie ./agentpulse-server` (built with `-tags=duckdb`) boots in <2 s, auto-creates `~/.agentpulse/{agentpulse.db, spans.duckdb, payloads/}`, prints a one-time bearer token, listens for OTLP on `:4318`, and serves the API + embedded UI on `:8080`. All ~20 metadata stores have been ported to SQLite, all ClickHouse analytics surfaces have a DuckDB equivalent, the Next.js UI is embedded via `embed.FS`, and `agentpulse-migrate --to=team` provides a resumable indie → team data move.
 
 | Slice | Status |
 |---|---|
@@ -148,11 +148,11 @@ Priority is impact × cost-to-indie-dev — the degree to which this moves the n
 | Bootstrap: first-run detection, single-token UX, `~/.agentpulse/admin_api_key` | ✅ shipped |
 | `bootstrap.StoreBundle` factory — team and indie share the API router | ✅ shipped |
 | Audit writer accepts nil ClickHouse conn (no-op in indie) | ✅ shipped |
-| Remaining 20 stores ported from Postgres → SQLite (alerts, evals, budgets, playground, retention, push, email, …) | ⏳ follow-up |
-| DuckDB `SessionStore`, `UserStore`, `SearchStore`, `EvalStore`, `AnalyticsStore`, `ExportStore` | ⏳ follow-up |
-| Embedded Next.js UI as `embed.FS` | ⏳ follow-up |
-| `agentpulse migrate --to=team` data migration tool | ⏳ follow-up |
-| Conformance test suite (same interface tests run against PG and SQLite) | ⏳ follow-up |
+| Remaining 20 stores ported from Postgres → SQLite (alerts, evals, budgets, playground, retention, push, email, topology, loops, run tags/annotations, span feedback, PII, eval jobs/configs, purge jobs) | ✅ shipped |
+| DuckDB `SessionStore`, `UserStore`, `SearchStore`, `EvalStore`, `AnalyticsStore`, `ExportStore` | ✅ shipped |
+| Embedded Next.js UI as `embed.FS` (`make indie-bundle && make indie-build`) | ✅ shipped |
+| `agentpulse-migrate --to=team` resumable data-migration tool | ✅ shipped |
+| Conformance test suite (`internal/store/conformance` — `ProjectStore` + `IngestTokenStore` covered, runs against SQLite in CI; PG-side opt-in via integration tag) | ✅ shipped |
 
 The build matrix:
 - **Team mode (default):** `CGO_ENABLED=0 go build ./cmd/server` — unchanged from before, no new runtime deps.

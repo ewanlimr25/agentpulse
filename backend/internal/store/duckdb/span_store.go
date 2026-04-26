@@ -79,7 +79,8 @@ func (s *SpanStore) Insert(ctx context.Context, rows []SpanRow) error {
 			start_time, end_time,
 			input_tokens, output_tokens, cost_usd, ttft_ms,
 			attributes, resource_attrs, events,
-			payload_s3_key
+			payload_s3_key,
+			search_prompt, search_completion, search_tool_input, search_tool_output
 		) VALUES (
 			?, ?, ?,
 			?, ?, ?, ?,
@@ -88,7 +89,8 @@ func (s *SpanStore) Insert(ctx context.Context, rows []SpanRow) error {
 			?, ?,
 			?, ?, ?, ?,
 			?, ?, ?,
-			?
+			?,
+			?, ?, ?, ?
 		)`)
 	if err != nil {
 		return fmt.Errorf("span_store insert prepare: %w", err)
@@ -100,6 +102,13 @@ func (s *SpanStore) Insert(ctx context.Context, rows []SpanRow) error {
 		resAttrsJSON, _ := json.Marshal(r.ResourceAttrs)
 		eventsJSON, _ := json.Marshal(r.Events)
 
+		// Pre-compute lowercased search columns from the attributes map.
+		// Mirrors the ClickHouse MATERIALIZED columns from migration 012.
+		searchPrompt := strings.ToLower(r.Attributes["gen_ai.prompt"])
+		searchCompletion := strings.ToLower(r.Attributes["gen_ai.completion"])
+		searchToolInput := strings.ToLower(r.Attributes["tool.input"])
+		searchToolOutput := strings.ToLower(r.Attributes["tool.output"])
+
 		if _, err := stmt.ExecContext(ctx,
 			r.TraceID, r.SpanID, r.ParentSpanID,
 			r.RunID, r.ProjectID, r.SessionID, r.UserID,
@@ -109,6 +118,7 @@ func (s *SpanStore) Insert(ctx context.Context, rows []SpanRow) error {
 			int32(r.InputTokens), int32(r.OutputTokens), r.CostUSD, r.TtftMs,
 			string(attrsJSON), string(resAttrsJSON), string(eventsJSON),
 			r.PayloadS3Key,
+			searchPrompt, searchCompletion, searchToolInput, searchToolOutput,
 		); err != nil {
 			return fmt.Errorf("span_store insert exec: %w", err)
 		}

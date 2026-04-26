@@ -26,6 +26,7 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/pricing"
 	"github.com/agentpulse/agentpulse/backend/internal/pushnotify"
 	"github.com/agentpulse/agentpulse/backend/internal/storage"
+	"github.com/agentpulse/agentpulse/backend/internal/web"
 )
 
 func main() {
@@ -235,9 +236,16 @@ func startHTTP(
 		providerKeys, llmClient, pricingTable, auditWriter,
 	)
 
+	// In indie mode, wrap the router with the embedded UI: API paths still go
+	// to the router; everything else falls through to the static bundle.
+	var rootHandler http.Handler = router
+	if indieOTLP != nil {
+		rootHandler = withEmbeddedUI(router)
+	}
+
 	srv := &http.Server{
 		Addr:         cfg.HTTPAddr(),
-		Handler:      router,
+		Handler:      rootHandler,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -291,4 +299,17 @@ func startHTTP(
 		_ = otlpSrv.Shutdown(shutCtx)
 	}
 	slog.Info("server stopped")
+}
+
+// withEmbeddedUI returns a handler that routes API paths to the API router and
+// everything else to the embedded Next.js static bundle (with SPA fallback).
+func withEmbeddedUI(api http.Handler) http.Handler {
+	uiHandler := web.Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if web.IsAPIPath(r.URL.Path) {
+			api.ServeHTTP(w, r)
+			return
+		}
+		uiHandler.ServeHTTP(w, r)
+	})
 }

@@ -14,12 +14,11 @@ import (
 	"github.com/agentpulse/agentpulse/backend/internal/store/duckdb"
 	"github.com/agentpulse/agentpulse/backend/internal/store/localfs"
 	"github.com/agentpulse/agentpulse/backend/internal/store/sqlite"
-	"github.com/agentpulse/agentpulse/backend/internal/store/stub"
 )
 
 // IndieStores opens SQLite + DuckDB + local-FS payload store and returns a
-// StoreBundle filled with real implementations for the ported stores and stubs
-// for everything else.
+// fully-wired StoreBundle. Each store is the indie-mode (SQLite or DuckDB)
+// implementation of its interface — no stubs remain after P0-1 follow-up.
 func IndieStores(ctx context.Context, dataDir string) (*StoreBundle, error) {
 	sqliteDB, err := sqlite.Open(filepath.Join(dataDir, "agentpulse.db"))
 	if err != nil {
@@ -43,38 +42,37 @@ func IndieStores(ctx context.Context, dataDir string) (*StoreBundle, error) {
 		SQLiteDB: sqliteDB,
 		DuckDB:   duckDB,
 
-		Projects:     sqlite.NewProjectStore(sqliteDB),
-		IngestTokens: sqlite.NewIngestTokenStore(sqliteDB),
+		// SQLite metadata stores
+		Projects:       sqlite.NewProjectStore(sqliteDB),
+		IngestTokens:   sqlite.NewIngestTokenStore(sqliteDB),
+		Topology:       sqlite.NewTopologyStore(sqliteDB),
+		Budget:         sqlite.NewBudgetStore(sqliteDB),
+		EvalConfigs:    sqlite.NewEvalConfigStore(sqliteDB),
+		EvalJobs:       sqlite.NewEvalJobStore(sqliteDB),
+		AlertRules:     sqlite.NewAlertRuleStore(sqliteDB),
+		Loops:          sqlite.NewLoopStore(sqliteDB),
+		PIIConfigs:     sqlite.NewProjectPIIConfigStore(sqliteDB),
+		SpanFeedback:   sqlite.NewSpanFeedbackStore(sqliteDB),
+		Playground:     sqlite.NewPlaygroundStore(sqliteDB),
+		RunTags:        sqlite.NewRunTagStore(sqliteDB),
+		RunAnnotations: sqlite.NewRunAnnotationStore(sqliteDB),
+		PushSubs:       sqlite.NewPushSubscriptionStore(sqliteDB),
+		EmailDigests:   sqlite.NewEmailDigestStore(sqliteDB),
+		Retention:      sqlite.NewRetentionStore(sqliteDB),
+		PurgeJobs:      sqlite.NewPurgeJobStore(sqliteDB),
 
-		Spans: duckdb.NewSpanStore(duckDB),
-		Runs:  duckdb.NewRunStore(duckDB),
+		// DuckDB columnar stores
+		Spans:     duckdb.NewSpanStore(duckDB),
+		Runs:      duckdb.NewRunStore(duckDB),
+		Sessions:  duckdb.NewSessionStore(duckDB),
+		Users:     duckdb.NewUserStore(duckDB),
+		Search:    duckdb.NewSearchStore(duckDB),
+		Evals:     duckdb.NewEvalStore(duckDB),
+		Analytics: duckdb.NewAnalyticsStore(duckDB),
+		Exports:   duckdb.NewExportStore(duckDB),
 
+		// Filesystem payloads
 		Payloads: payloads,
-
-		// Stubs for stores not yet ported. Each returns ErrNotImplemented or a
-		// benign empty result. Replacing these with SQLite/DuckDB-backed
-		// implementations is the work that completes P0-1.
-		Topology:       stub.NewTopologyStore(),
-		Budget:         stub.NewBudgetStore(),
-		Evals:          stub.NewEvalStore(),
-		EvalConfigs:    stub.NewEvalConfigStore(),
-		AlertRules:     stub.NewAlertRuleStore(),
-		Analytics:      stub.NewAnalyticsStore(),
-		Loops:          stub.NewLoopStore(),
-		Sessions:       stub.NewSessionStore(),
-		Users:          stub.NewUserStore(),
-		Search:         stub.NewSearchStore(),
-		PIIConfigs:     stub.NewProjectPIIConfigStore(),
-		SpanFeedback:   stub.NewSpanFeedbackStore(),
-		Playground:     stub.NewPlaygroundStore(),
-		Exports:        stub.NewExportStore(),
-		RunTags:        stub.NewRunTagStore(),
-		RunAnnotations: stub.NewRunAnnotationStore(),
-		PushSubs:       stub.NewPushSubscriptionStore(),
-		EmailDigests:   stub.NewEmailDigestStore(),
-		Retention:      stub.NewRetentionStore(),
-		PurgeJobs:      stub.NewPurgeJobStore(),
-		EvalJobs:       stub.NewEvalJobStore(),
 	}
 	return b, nil
 }

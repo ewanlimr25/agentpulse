@@ -1,0 +1,6 @@
+Placeholder so the dist/ directory exists at build time even when the
+embedded indie UI hasn't been built yet. `make indie-bundle` populates this
+directory with the static export of the Next.js app (see web/next.config.ts).
+
+When dist/ contains only this .gitkeep, the embedded handler returns a
+single placeholder page directing the user to run `make indie-bundle`.
